@@ -156,7 +156,7 @@ def validate_dependencies(directory, system):
 
 def recipe_digest():
     value = hashlib.sha256()
-    for file in (LOCK, Path(__file__), Path(__file__).with_name('smoke.py'), Path(__file__).with_name('build.py'), Path(__file__).with_name('audit_linux.py'), Path(__file__).with_name('pe.py'), ROOT / 'requirements-build.txt'):
+    for file in (LOCK, Path(__file__), Path(__file__).with_name('smoke.py'), Path(__file__).with_name('build.py'), Path(__file__).with_name('audit_linux.py'), Path(__file__).with_name('pe.py'), Path(__file__).with_name('windows_runtime.py'), Path(__file__).with_name('windows-runtimes.lock.json'), ROOT / 'requirements-build.txt', ROOT / 'LICENSES.md', ROOT / 'LICENSE'):
         value.update(file.read_bytes())
     return value.hexdigest()
 
@@ -210,7 +210,7 @@ def prepare(target, cache, offline=False, jobs=4, force=False):
         except Exception:
             diagnostics = cache / 'diagnostics' / target.replace('/', '-')
             for file in Path(temporary).rglob('*'):
-                if file.is_file() and file.name in {'meson-log.txt', 'config.log', 'config.h', 'config_components.h'}:
+                if file.is_file() and file.name in {'meson-log.txt', 'config.log', 'config.h', 'config_components.h', 'mpv-link.map', 'windows-link-inputs.json', 'runtime-dlls.json', 'toolchain.json'}:
                     destination_log = diagnostics / file.relative_to(temporary)
                     destination_log.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(file, destination_log)
@@ -254,6 +254,9 @@ def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--target', choices=sorted(TARGETS), default='darwin/universal' if sys.platform == 'darwin' else '/'.join(host())); parser.add_argument('--cache', type=Path, default=ROOT / 'build/mpv-cache'); parser.add_argument('--offline', action='store_true', default=os.environ.get('MPV_OFFLINE') == '1'); parser.add_argument('--fetch-only', action='store_true'); parser.add_argument('--check', action='store_true'); parser.add_argument('--force', action='store_true'); parser.add_argument('--jobs', type=int, default=min(os.cpu_count() or 2, 8)); args = parser.parse_args(); args.cache.mkdir(parents=True, exist_ok=True)
     if args.fetch_only:
         for entry in json.loads(LOCK.read_text())['sources'].values(): fetch(entry, args.cache, args.offline)
+        if args.target.startswith('windows/'):
+            policy = json.loads(Path(__file__).with_name('windows-runtimes.lock.json').read_text())
+            for entry in policy['sources'].values(): fetch(entry, args.cache, args.offline)
     elif args.check: verify(args.cache / 'prepared' / args.target.replace('/', '-') / 'mpv', args.target)
     else: print(universal(args.cache, args.offline, args.jobs, args.force) if args.target == 'darwin/universal' else prepare(args.target, args.cache, args.offline, args.jobs, args.force))
 

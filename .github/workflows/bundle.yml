@@ -7,6 +7,10 @@ name: Build libmpv bundles
         description: "Bundle version (v<mpv>-<recipe revision>)"
         type: string
         default: v0.42.0-1
+      create_release:
+        description: "Create a draft after all five targets pass"
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -87,13 +91,13 @@ jobs:
         with:
           path: |
             build/mpv-cache/*.tar.*
-          key: mpv-sources-${{ hashFiles('scripts/mpv/sources.lock.json') }}
+          key: mpv-sources-${{ hashFiles('scripts/mpv/sources.lock.json', 'scripts/mpv/windows-runtimes.lock.json') }}
       - name: Download locked upstream source snapshot
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download sources-v0.42.0-r1 --repo he-music/mpv-bundles \
+          gh release download sources-v0.42.0-r2 --repo he-music/mpv-bundles \
             --pattern '*.tar.*' --dir build/mpv-cache --skip-existing
       - name: Prepare Linux bundle in locked container
         if: startsWith(matrix.target, 'linux/')
@@ -138,6 +142,7 @@ jobs:
         shell: msys2 {0}
         run: |
           python -m pip install -r requirements-build.txt
+          python tests/probe_windows_link.py
           python scripts/mpv/prepare.py --offline --target "${{ matrix.target }}"
           python scripts/mpv/prepare.py --check --offline --target "${{ matrix.target }}"
           python scripts/validate_dst.py --resources "build/mpv-cache/prepared/${{ matrix.asset_name }}/mpv" --target "${{ matrix.target }}"
@@ -171,7 +176,7 @@ jobs:
 
   release-draft:
     needs: [validate, build]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -196,4 +201,4 @@ jobs:
         run: |
           gh release create "$BUNDLE_VERSION" --repo "${{ github.repository }}" \
             dist/*.tar.gz dist/manifest.json dist/SHA256SUMS \
-            --draft --title "$BUNDLE_VERSION" --notes-file README.md
+            --target "$GITHUB_SHA" --draft --title "$BUNDLE_VERSION" --notes-file README.md

@@ -50,8 +50,10 @@ def materials(output, sources, archives, lock):
     for archive in archives.values(): shutil.copy2(archive, source_dir / archive.name)
     shutil.copy2(p.LOCK, output / 'sources.lock.json')
     scripts = output / 'rebuild/scripts/mpv'; scripts.mkdir(parents=True)
-    for name in ('prepare.py', 'build.py', 'smoke.py', 'audit_linux.py', 'pe.py', 'sources.lock.json'): shutil.copy2(Path(__file__).with_name(name), scripts / name)
+    for name in ('prepare.py', 'build.py', 'smoke.py', 'audit_linux.py', 'pe.py', 'windows_runtime.py', 'windows-runtimes.lock.json', 'sources.lock.json'): shutil.copy2(Path(__file__).with_name(name), scripts / name)
     shutil.copy2(p.ROOT / 'requirements-build.txt', output / 'rebuild/requirements-build.txt')
+    shutil.copy2(p.ROOT / 'LICENSES.md', output / 'rebuild/LICENSES.md')
+    shutil.copy2(p.ROOT / 'LICENSE', output / 'rebuild/LICENSE')
     shutil.copy2(p.ROOT / 'LICENSES.md', output / 'licenses/NOTICES.md')
     if p.host()[0] == 'windows':
         mingw = os.environ.get('MINGW_PREFIX')
@@ -116,6 +118,9 @@ def source_build(target, stage, cache, lock, offline, jobs):
     if not re.search(r'^#define CONFIG_DST_DECODER 1$', config, re.M) and not re.search(r'^#define CONFIG_DST_DECODER 1$', components, re.M): raise ValueError('FFmpeg DST decoder is not enabled')
     execute(['make', f'-j{jobs}'], ffmpeg); execute(['make', 'install'], ffmpeg)
     env['LDFLAGS'] += ' -lc++' if system in ('darwin', 'windows') else ' -lstdc++'
+    if system == 'windows':
+        link_map = stage / 'mpv-link.map'
+        env['LDFLAGS'] += f' -Wl,-Map,"{link_map.as_posix()}"'
     adjustments = [apply_coreaudio_fix(sources['mpv'])] if system == 'darwin' else []
     mpv_options = ['--default-library=shared', '-Dgpl=false', '-Dcplayer=false', '-Dlibmpv=true', '-Dbuild-date=false', '-Dlua=lua52', '-Dgl=disabled', '-Dmanpage-build=disabled'] + (['-Dcoreaudio=enabled'] if system == 'darwin' else ['-Dwasapi=enabled', '-Dwin32-threads=enabled'] if system == 'windows' else ['-Dpulse=enabled'])
     meson('mpv', mpv_options)
@@ -149,7 +154,14 @@ def source_build(target, stage, cache, lock, offline, jobs):
     else: toolchain['systemPackages'] = p.run(['dpkg-query', '-W', '-f=${Package}=${Version}\\n', 'libc6', 'libpulse0', 'libstdc++6'], capture=True)
     p.atomic_json(config_dir / 'toolchain.json', toolchain); shutil.copy2(ffmpeg / 'config.h', config_dir / 'ffmpeg-config.h'); shutil.copy2(ffmpeg / 'config_components.h', config_dir / 'ffmpeg-config_components.h'); shutil.copy2(ffmpeg / 'ffbuild/config.mak', config_dir / 'ffmpeg-config.mak'); p.atomic_json(config_dir / 'commands.json', commands); p.atomic_json(config_dir / 'mpv-source-adjustments.json', adjustments)
     p.atomic_json(output / 'build-info.json', {'target': target, 'host': platform.platform(), 'commit': os.environ.get('GITHUB_SHA', 'local'), 'repository': os.environ.get('GITHUB_REPOSITORY', 'he-music/mpv-bundles'), 'runID': os.environ.get('GITHUB_RUN_ID', 'local'), 'audioOnly': True, 'scripts': 'supported; automatic loading disabled by consumers', 'dstDecoder': True})
+    runtime_details = {}
+    if system == 'windows':
+        from windows_runtime import capture_link_evidence, complete_materials
+        capture_link_evidence(link_map, prefix, native_prefix, output)
+        review = complete_materials(output, target, cache, offline)
+        runtime_details = {'correspondingSourceStatus': review['correspondingSourceStatus'],
+                           'windowsRuntimeReview': 'windows-runtime-review.json'}
     if system == 'linux':
         from audit_linux import audit
         p.atomic_json(output / 'linux-audit.json', audit(output, target, lock['linuxGlibcBaseline']))
-    return output, {'kind': 'source', 'audioOnly': True, 'scripts': 'supported; automatic loading disabled by consumers', 'dstDecoder': True, 'runtimeArchitecture': arch, 'correspondingSourceStatus': 'pending-toolchain-runtime-review' if system == 'windows' else 'project-fixed-sources', 'linuxBuildImage': lock['linuxBuildImage'] if system == 'linux' else None}
+    return output, {'kind': 'source', 'audioOnly': True, 'scripts': 'supported; automatic loading disabled by consumers', 'dstDecoder': True, 'runtimeArchitecture': arch, 'correspondingSourceStatus': 'pending-toolchain-runtime-review' if system == 'windows' else 'project-fixed-sources', **runtime_details, 'linuxBuildImage': lock['linuxBuildImage'] if system == 'linux' else None}

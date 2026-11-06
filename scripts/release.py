@@ -124,6 +124,9 @@ def index(version, directory):
                 raise ValueError(f"{target}: {key} 与当前发布配方不一致")
         if manifest.get("target") != target:
             raise ValueError("归档目标与资源名不一致")
+        status = manifest.get("details", {}).get("correspondingSourceStatus")
+        if target.startswith("windows/") and status != "project-fixed-sources-and-windows-runtime-materials":
+            raise ValueError(f"{target}: Windows 运行库来源/素材未闭环")
         result["targets"][target] = {
             "asset": file.name, "sha256": prepare.digest(file), "size": file.stat().st_size,
             "manifestSHA256": archive_manifest_digest(file),

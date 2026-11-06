@@ -76,7 +76,7 @@ class ReleaseTests(unittest.TestCase):
         (directory / library).write_bytes(b"test library")
         manifest = {"schemaVersion": 1, "mpvVersion": "0.42.0", "ffmpegVersion": "8.0.1",
                     "clientAPI": "2.6", "recipeSHA256": prepare.recipe_digest(), "target": target,
-                    "files": prepare.inventory(directory), "details": {"correspondingSourceStatus": "test"}}
+                    "files": prepare.inventory(directory), "details": {"correspondingSourceStatus": "project-fixed-sources-and-windows-runtime-materials" if target.startswith("windows/") else "project-fixed-sources"}}
         (directory / "manifest.json").write_text(json.dumps(manifest))
         return manifest
 
@@ -103,6 +103,21 @@ class ReleaseTests(unittest.TestCase):
             for line in lines:
                 digest, file = line.split("  ")
                 self.assertEqual(prepare.digest(output / file), digest)
+
+    def test_index_rejects_pending_windows_materials(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "dist"
+            for target in sorted(prepare.TARGETS):
+                manifest = self.fixture(root, target)
+                if target.startswith("windows/"):
+                    manifest["details"]["correspondingSourceStatus"] = "pending-toolchain-runtime-review"
+                    directory = root / "prepared" / target.replace("/", "-") / "mpv"
+                    (directory / "manifest.json").write_text(json.dumps(manifest))
+                with patch.object(prepare, "verify", return_value=manifest):
+                    release.package(target, "v0.42.0-1", output, root)
+            with self.assertRaisesRegex(ValueError, "Windows"):
+                release.index("v0.42.0-1", output)
 
     def test_index_rejects_missing_target(self):
         with tempfile.TemporaryDirectory() as temp:
