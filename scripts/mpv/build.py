@@ -81,7 +81,7 @@ def source_build(target, stage, cache, lock, offline, jobs):
     elif system == 'linux':
         triplet = 'aarch64-linux-gnu' if arch == 'arm64' else 'x86_64-linux-gnu'; env['PKG_CONFIG_LIBDIR'] += f':/usr/lib/{triplet}/pkgconfig:/usr/share/pkgconfig'
     else:
-        env.update(CC='clang', CXX='clang++', AR='llvm-ar', RANLIB='llvm-ranlib', CFLAGS='-O2', CXXFLAGS='-O2', LDFLAGS='-static -static-libgcc -static-libstdc++'); env['SHELL'] = '/usr/bin/bash'
+        env.update(CC='clang', CXX='clang++', AR='llvm-ar', RANLIB='llvm-ranlib', CFLAGS='-O2', CXXFLAGS='-O2', LDFLAGS='-static -static-libgcc'); env['SHELL'] = '/usr/bin/bash'
     env['LDFLAGS'] += f' -L"{(prefix / "lib").as_posix()}"'
     commands = []
     def execute(args, cwd=None, custom_env=None):
@@ -115,7 +115,7 @@ def source_build(target, stage, cache, lock, offline, jobs):
     config = (ffmpeg / 'config.h').read_text(encoding='utf-8'); components = (ffmpeg / 'config_components.h').read_text(encoding='utf-8') if (ffmpeg / 'config_components.h').exists() else ''
     if not re.search(r'^#define CONFIG_DST_DECODER 1$', config, re.M) and not re.search(r'^#define CONFIG_DST_DECODER 1$', components, re.M): raise ValueError('FFmpeg DST decoder is not enabled')
     execute(['make', f'-j{jobs}'], ffmpeg); execute(['make', 'install'], ffmpeg)
-    if system != 'windows': env['LDFLAGS'] += ' -lc++' if system == 'darwin' else ' -lstdc++'
+    env['LDFLAGS'] += ' -lc++' if system in ('darwin', 'windows') else ' -lstdc++'
     adjustments = [apply_coreaudio_fix(sources['mpv'])] if system == 'darwin' else []
     mpv_options = ['--default-library=shared', '-Dgpl=false', '-Dcplayer=false', '-Dlibmpv=true', '-Dbuild-date=false', '-Dlua=lua52', '-Dgl=disabled', '-Dmanpage-build=disabled'] + (['-Dcoreaudio=enabled'] if system == 'darwin' else ['-Dwasapi=enabled', '-Dwin32-threads=enabled'] if system == 'windows' else ['-Dpulse=enabled'])
     meson('mpv', mpv_options)

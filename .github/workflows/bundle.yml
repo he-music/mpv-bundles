@@ -21,8 +21,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: bundles-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  group: bundles-${{ github.ref }}-${{ github.sha }}-${{ github.event_name }}
+  cancel-in-progress: false
 
 jobs:
   validate:
