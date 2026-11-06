@@ -12,6 +12,9 @@ libmpv 以可独立替换的动态库交付，使用方需遵守相应 LGPL 的�
 | libass、HarfBuzz、fast_float、Vulkan-Headers、pkgconf | 各自的上游许可，随源码及 `licenses/` 提供 |
 | Lua 5.2.4 | MIT；静态链接以保留客户端选项，附带 `doc/readme.html` 中的版权和许可 |
 
+FreeType 声明：Portions of this software are copyright © 2025 The FreeType Project
+(https://freetype.org). All rights reserved.
+
 `load-scripts=no` 由消费方初始化时设置，Lua 本身仍包含在库内。
 `rebuild/` 保存确切的构建脚本；`build-config/` 保存编译选项和补丁结果摘要，源码归档保持上游原样。
 
