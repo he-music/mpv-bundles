@@ -38,7 +38,7 @@ class RecipeTests(unittest.TestCase):
             self.assertEqual((version, format_id, channel_type, channels, rate, bits, block, reserved), (1, 0, 2, 2, 2822400, 1, 4096, 0))
             self.assertGreater(count, 0)
 
-    def test_scripts_disabled_and_dst_sample_is_explicit(self):
+    def test_lua_options_supported_and_dst_sample_is_explicit(self):
         text = (ROOT / 'scripts/mpv/build.py').read_text()
         self.assertIn("'-Dlua=lua52'", text)
         self.assertNotIn("'-Dlua=disabled'", text)

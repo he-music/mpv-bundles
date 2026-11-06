@@ -88,6 +88,13 @@ jobs:
           path: |
             build/mpv-cache/*.tar.*
           key: mpv-sources-${{ hashFiles('scripts/mpv/sources.lock.json') }}
+      - name: Download locked upstream source snapshot
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download sources-v0.42.0-r1 --repo he-music/mpv-bundles \
+            --pattern '*.tar.*' --dir build/mpv-cache --skip-existing
       - name: Prepare Linux bundle in locked container
         if: startsWith(matrix.target, 'linux/')
         shell: bash
@@ -109,8 +116,9 @@ jobs:
               python3 -m venv build/tools
               export PATH="$PWD/build/tools/bin:$PATH"
               python -m pip install -r requirements-build.txt
-              python scripts/mpv/prepare.py --target "$BUNDLE_TARGET"
+              python scripts/mpv/prepare.py --offline --target "$BUNDLE_TARGET"
               python scripts/mpv/prepare.py --check --offline --target "$BUNDLE_TARGET"
+              python scripts/validate_dst.py --resources "build/mpv-cache/prepared/${{ matrix.asset_name }}/mpv" --target "$BUNDLE_TARGET"
               python scripts/release.py package --target "$BUNDLE_TARGET" --version "$BUNDLE_VERSION"
             '
       - name: Install native Windows toolchain
@@ -130,8 +138,9 @@ jobs:
         shell: msys2 {0}
         run: |
           python -m pip install -r requirements-build.txt
-          python scripts/mpv/prepare.py --target "${{ matrix.target }}"
+          python scripts/mpv/prepare.py --offline --target "${{ matrix.target }}"
           python scripts/mpv/prepare.py --check --offline --target "${{ matrix.target }}"
+          python scripts/validate_dst.py --resources "build/mpv-cache/prepared/${{ matrix.asset_name }}/mpv" --target "${{ matrix.target }}"
           python scripts/release.py package --target "${{ matrix.target }}" --version "$BUNDLE_VERSION"
       - name: Build and package macOS universal bundle
         if: matrix.target == 'darwin/universal'
@@ -140,8 +149,9 @@ jobs:
           python3 -m venv build/tools
           source build/tools/bin/activate
           python -m pip install -r requirements-build.txt
-          python scripts/mpv/prepare.py --target darwin/universal
+          python scripts/mpv/prepare.py --offline --target darwin/universal
           python scripts/mpv/prepare.py --check --offline --target darwin/universal
+          python scripts/validate_dst.py --resources build/mpv-cache/prepared/darwin-universal/mpv --target darwin/universal
           python scripts/release.py package --target darwin/universal --version "$BUNDLE_VERSION"
       - uses: actions/upload-artifact@v4
         with:

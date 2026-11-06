@@ -3,11 +3,9 @@
 import argparse
 import gzip
 import hashlib
-import io
 import json
 from pathlib import Path, PurePosixPath
 import re
-import shutil
 import sys
 import tarfile
 import tempfile
@@ -58,6 +56,7 @@ def package(target, version, output, cache):
                             archive.addfile(info, source)
                     else:
                         archive.addfile(info)
+        temporary.chmod(0o644)
         temporary.replace(destination)
     finally:
         temporary.unlink(missing_ok=True)

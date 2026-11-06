@@ -57,6 +57,10 @@ libass／libplacebo 及其固定依赖。关闭视频解码器、GPU 输出和�
 Windows 必须使用与目标匹配的 MSYS2 CLANG64／CLANGARM64 原生 Python 和工具链，
 并通过 MSYS2 安装 Ninja。Linux 在工作流指定的 Ubuntu 22.04 镜像内构建。
 
+CI 从本仓库的固定源码快照 `sources-v0.42.0-r1` 预填缓存，再以离线模式编译；快照内的
+11 个归档与源码锁中的原始来源逐一对应，构建会重新校验 SHA256，避免各原始下载站的瞬时
+断连中止整个平台构建。快照不含播放器二进制。
+
 ```sh
 python3 -m venv build/tools
 . build/tools/bin/activate
@@ -80,6 +84,10 @@ python scripts/mpv/smoke.py --resources build/mpv-cache/prepared/darwin-universa
 
 烟雾测试使用 `ao=null`，验证 client API、生产初始化选项，以及合成 WAV／DSF／原始
 DFF 的加载、进度、暂停、跳转、继续、停止和实例销毁。它不证明真实声卡的听感或设备切换。
+
+CI 另运行 `scripts/validate_dst.py`，自动生成 DST 容器中的原始帧并实际调用 `dst`
+解码器，验证播放控制，将证据写入 `dst-frame-validation.json`。这一用例不覆盖 DST 的算术
+压缩分支；报告明确记录该范围，也不需要上传私有音频。
 
 额外验证本地 DST 压缩 DFF：
 

@@ -1,8 +1,6 @@
-import hashlib
 import io
 import json
 from pathlib import Path
-import struct
 import sys
 import tarfile
 import tempfile
@@ -90,6 +88,7 @@ class ReleaseTests(unittest.TestCase):
                 with patch.object(prepare, "verify", return_value=manifest):
                     archive = release.package(target, "v0.42.0-1", output, root)
                     digest = prepare.digest(archive)
+                    self.assertEqual(archive.stat().st_mode & 0o044, 0o044)
                     release.package(target, "v0.42.0-1", output, root)
                     self.assertEqual(prepare.digest(archive), digest)
             result = release.index("v0.42.0-1", output)
