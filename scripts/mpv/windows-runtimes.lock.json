@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "correspondingSourceStatus": "project-fixed-sources-and-windows-runtime-materials",
+  "scope": "Retain the standard MSYS2 libiconv runtime. Include the complete fixed MinGW source tree conservatively for potentially used LGPL headers/runtime; absence of a dynamic DLL does not exclude static code. LLVM runtime licenses include Apache-2.0 WITH LLVM-exception and historical notices; no claim of byte-reproducible rebuilding or absence of LGPL code.",
+  "packageVersions": {
+    "compiler-rt": "23.1.5-1", "libc++": "23.1.5-1", "libunwind": "23.1.5-1",
+    "crt": "14.0.0.r598.ge3d18511f-1", "headers": "14.0.0.r598.ge3d18511f-1",
+    "libwinpthread": "14.0.0.r598.ge3d18511f-1", "winpthreads": "14.0.0.r598.ge3d18511f-1", "libiconv": "1.19.1-1"
+  },
+  "architectures": {
+    "amd64": {"machine": 34404, "packagePrefix": "mingw-w64-clang-x86_64-", "runtimeDLLs": {"libiconv-2.dll": "de91a00fc21d31a7a672ab04f44cd86db05d8711e07c873a8d5c57cd4a093d7a"}},
+    "arm64": {"machine": 43620, "packagePrefix": "mingw-w64-clang-aarch64-", "runtimeDLLs": {"libiconv-2.dll": "9f9f3a2d41f19894298188881a75c5eea5d5ec043e56e672351bc496bcd7b79e"}}
+  },
+  "licenseSHA256": {
+    "compiler-rt/LICENSE": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d",
+    "libc++/LICENSE": "539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b",
+    "libunwind/LICENSE": "b5efebcaca80879234098e52d1725e6d9eb8fb96a19fce625d39184b705f7b6d",
+    "crt/COPYING": "99a69660981156c21336fdb5661f89341b013c94e4bf9e1c7467b4745718397f",
+    "headers/COPYING": "99a69660981156c21336fdb5661f89341b013c94e4bf9e1c7467b4745718397f",
+    "crt/COPYING.MinGW-w64-runtime.txt": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f",
+    "headers/COPYING.MinGW-w64-runtime.txt": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f",
+    "crt/COPYING.MinGW-w64.txt": "f38e6194bd3bfa1b654f118e5acefe0aead437bbe669eee43957ccc65a7127f1",
+    "headers/COPYING.MinGW-w64.txt": "f38e6194bd3bfa1b654f118e5acefe0aead437bbe669eee43957ccc65a7127f1",
+    "libwinpthread/COPYING": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177",
+    "winpthreads/COPYING": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177",
+    "libiconv/COPYING": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+    "libiconv/COPYING.LIB": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+    "libiconv/libcharset/COPYING.LIB": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+    "libiconv/README": "ff0400ffb0c3dace1a64012f4125f292a3fef58c5b8486c7f9ba0c01a0637f3c"
+  },
+  "sources": {
+    "libiconv": {"url": "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.19.1.tar.gz", "filename": "libiconv-1.19.1.tar.gz", "root": "libiconv-1.19.1", "size": 5895620, "sha256": "9a06844846d664d7122161700c10a64480d7c7bcead3091925a785b38c91edab"},
+    "mingw-w64": {"url": "https://codeload.github.com/mingw-w64/mingw-w64/tar.gz/e3d18511f9759d455cae20c34703eea4a0723cf3", "filename": "mingw-w64-e3d18511.tar.gz", "root": "mingw-w64-e3d18511f9759d455cae20c34703eea4a0723cf3", "size": 15862067, "sha256": "9e2d1d654361813cf4f88ef133fe6f2b997f383272beac2d9fb08de79018b2cc"},
+    "msys2-recipes": {"url": "https://codeload.github.com/msys2/MINGW-packages/tar.gz/96afc8ce282c9ea7d5ac987b8139a0514e46d406", "filename": "msys2-mingw-packages-96afc8ce.tar.gz", "root": "MINGW-packages-96afc8ce282c9ea7d5ac987b8139a0514e46d406", "size": 4407801, "sha256": "532a930802131f5c9895ccd71c79751b7cc55bc34f58a4be78bb5fd76e639d30"}
+  },
+  "recipeCommit": "96afc8ce282c9ea7d5ac987b8139a0514e46d406",
+  "compilerRecordedRecipeCommit": "efc96badda99c076509ef01986c673d1cd30f725",
+  "identicalRecipeTreesAtBothCommits": {"crt": "69487846d149d545a6834d72345575618f790d48", "headers": "25bc62c8e8f7f19e4d2cb1f5ba100460252229bf", "llvm": "44d7fb2c38718e8255a60428670e96d44a459429", "winpthreads": "9ae4fd60baaed4178f4faf17820b562e92a3cc0d"},
+  "recipeDirectories": ["mingw-w64-libiconv", "mingw-w64-crt", "mingw-w64-headers", "mingw-w64-winpthreads", "mingw-w64-llvm"],
+  "libiconvRecipeFiles": {"0003-add-cp65001-as-utf8-alias.patch": "d5a19da369771cc001445588555e57c0cf9c4ae061dd47d2f1643ae64ed99680", "0002-fix-cr-for-awk-in-configure.all.patch": "5125319c3b1751b86baf779b512a4cc88bd7a5cc2fd71c76eb2bf6df7089e675", "iconv.pc": "56e7ec406bf42eb66b1d972f20d229f7a76ba00c38c7b4403bf348875704baae"},
+  "rebuildInstructions": [
+    "Use native MSYS2 CLANG64 for amd64 or CLANGARM64 for arm64. Retain the package versions above and the complete licenses/windows-toolchain notices.",
+    "The original, unmodified source archives are in sources/windows. The complete MinGW tree conservatively covers headers and runtime, including potentially LGPL portions.",
+    "In a separate build workspace unpack the MSYS2 recipe snapshot; use mingw-w64-libiconv/PKGBUILD with the included libiconv-1.19.1.tar.gz, both patches and iconv.pc. Run makepkg-mingw --syncdeps --cleanbuild in the matching shell. PKGBUILD prepare/build/package functions are authoritative, including generated files and configure flags.",
+    "MinGW headers/CRT/winpthreads use the fixed full MinGW source archive and the matching recipe directories. LLVM runtime rebuilding uses mingw-w64-llvm/PKGBUILD and its fixed upstream sources/patches; its Apache-2.0 WITH LLVM-exception LICENSE files and historical notices accompany the binaries. The snapshot is a recipe, not a bundled LLVM upstream source archive.",
+    "Rebuild libmpv and project libraries with the bundled common fixed-source recipe. Capture the final LLD map and inputs after linking and rerun this runtime review. Link evidence records actual archive/object hashes and package provenance, not a claim that static or LGPL code is absent."
+  ]
+}
