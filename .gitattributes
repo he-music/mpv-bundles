@@ -1,0 +1,2 @@
+# 固定构建脚本字节，避免 Windows checkout 改写配方摘要。
+* text=auto eol=lf
