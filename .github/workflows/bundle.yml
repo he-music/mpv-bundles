@@ -1,8 +1,9 @@
 name: bundle
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
   push:
-    tags: ['v*']
+    tags:
+      - "v*"
 permissions: {contents: write}
 jobs:
   build:
