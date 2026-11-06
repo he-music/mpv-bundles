@@ -82,6 +82,7 @@ def source_build(target, stage, cache, lock, offline, jobs):
         triplet = 'aarch64-linux-gnu' if arch == 'arm64' else 'x86_64-linux-gnu'; env['PKG_CONFIG_LIBDIR'] += f':/usr/lib/{triplet}/pkgconfig:/usr/share/pkgconfig'
     else:
         env.update(CC='clang', CXX='clang++', AR='llvm-ar', RANLIB='llvm-ranlib', CFLAGS='-O2', CXXFLAGS='-O2', LDFLAGS='-static -static-libgcc -static-libstdc++'); env['SHELL'] = '/usr/bin/bash'
+    env['LDFLAGS'] += f' -L"{(prefix / "lib").as_posix()}"'
     commands = []
     def execute(args, cwd=None, custom_env=None):
         commands.append(p.command_args(args)); return p.run(args, cwd, custom_env or env)
@@ -116,7 +117,7 @@ def source_build(target, stage, cache, lock, offline, jobs):
     execute(['make', f'-j{jobs}'], ffmpeg); execute(['make', 'install'], ffmpeg)
     if system != 'windows': env['LDFLAGS'] += ' -lc++' if system == 'darwin' else ' -lstdc++'
     adjustments = [apply_coreaudio_fix(sources['mpv'])] if system == 'darwin' else []
-    mpv_options = ['--default-library=shared', '-Dgpl=false', '-Dcplayer=false', '-Dlibmpv=true', '-Dbuild-date=false', '-Dlua=lua52', '-Dgl=disabled', '-Dmanpage-build=disabled'] + (['-Dcoreaudio=enabled'] if system == 'darwin' else ['-Dwasapi=enabled'] if system == 'windows' else ['-Dpulse=enabled'])
+    mpv_options = ['--default-library=shared', '-Dgpl=false', '-Dcplayer=false', '-Dlibmpv=true', '-Dbuild-date=false', '-Dlua=lua52', '-Dgl=disabled', '-Dmanpage-build=disabled'] + (['-Dcoreaudio=enabled'] if system == 'darwin' else ['-Dwasapi=enabled', '-Dwin32-threads=enabled'] if system == 'windows' else ['-Dpulse=enabled'])
     meson('mpv', mpv_options)
     output = stage / 'mpv'; output.mkdir(); filename = p.LIBRARIES[system]; shutil.copy2((prefix / ('bin' if system == 'windows' else 'lib') / filename).resolve(), output / filename)
     if system == 'darwin': execute(['install_name_tool', '-id', '@loader_path/libmpv.2.dylib', output / filename]); execute(['codesign', '--force', '--sign', '-', output / filename]); execute(['codesign', '--verify', '--strict', output / filename])
