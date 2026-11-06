@@ -1,5 +1,5 @@
 name: bundle
-on:
+"on":
   workflow_dispatch: {}
   push:
     tags:
