@@ -210,7 +210,7 @@ def prepare(target, cache, offline=False, jobs=4, force=False):
         except Exception:
             diagnostics = cache / 'diagnostics' / target.replace('/', '-')
             for file in Path(temporary).rglob('*'):
-                if file.is_file() and file.name in {'meson-log.txt', 'config.log', 'config.h', 'config_components.h', 'mpv-link.map', 'windows-link-inputs.json', 'runtime-dlls.json', 'toolchain.json'}:
+                if file.is_file() and file.name in {'meson-log.txt', 'config.log', 'config.h', 'config_components.h', 'mpv-link.map', 'windows-link-inputs.json', 'windows-link-reproducer.json', 'runtime-dlls.json', 'toolchain.json'}:
                     destination_log = diagnostics / file.relative_to(temporary)
                     destination_log.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(file, destination_log)
