@@ -9,7 +9,7 @@ SYSTEM_DLLS = frozenset({
     "gdi32.dll", "imm32.dll", "iphlpapi.dll", "ksuser.dll", "mf.dll", "mfplat.dll",
     "mfreadwrite.dll", "mfuuid.dll", "mmdevapi.dll", "msimg32.dll", "ncrypt.dll",
     "normaliz.dll", "ole32.dll", "oleaut32.dll", "powrprof.dll", "propsys.dll",
-    "psapi.dll", "rpcrt4.dll", "secur32.dll", "setupapi.dll", "shell32.dll", "shlwapi.dll",
+    "pathcch.dll", "shcore.dll", "uxtheme.dll", "psapi.dll", "rpcrt4.dll", "secur32.dll", "setupapi.dll", "shell32.dll", "shlwapi.dll",
     "user32.dll", "userenv.dll", "version.dll", "winmm.dll", "winspool.drv", "ws2_32.dll",
 })
 

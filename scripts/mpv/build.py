@@ -126,7 +126,8 @@ def source_build(target, stage, cache, lock, offline, jobs):
     if system == 'windows':
         from pe import imports, is_system_dll
         pending = [output / filename]
-        search = [prefix / 'bin', *[Path(value) for value in os.environ.get('PATH', '').split(os.pathsep) if value]]
+        native_prefix = Path(p.run(['cygpath', '-m', os.environ['MINGW_PREFIX']], capture=True).strip())
+        search = [prefix / 'bin', native_prefix / 'bin']
         while pending:
             for dependency in imports(pending.pop()):
                 if is_system_dll(dependency) or (output / dependency).exists():
