@@ -38,12 +38,87 @@ macOS universal 的两个架构配置与原生验证证据保留在材料包；�
 
 ## 配方范围
 
-保留常见音频、APE、DSF、原始 DSD DFF 和 DST 压缩 DFF；保留 mpv 必需的
-libass／libplacebo 及其固定依赖。关闭视频解码器、GPU 输出和硬件解码等扩展。
+这是音频解码用的 libmpv，不带 mpv 命令行程序。关闭视频解码器、GPU 输出、硬件解码和非必需自动依赖；保留 mpv 必需的 libass／libplacebo 及固定依赖。DSD 经 FFmpeg 解码供音频输出使用，不承诺原生 DSD／DoP 直通。
 
-编译 Lua 5.2 以保留 `load-scripts`、`osc`、`ytdl` 等客户端选项的兼容性。消费方在
-初始化时设置 `config=no`、`load-scripts=no`、`osc=no`、`ytdl=no`，避免自动加载用户脚本。
-消费方负责网络资源入口、播放设备及应用自身的权限控制。
+### 主要构建参数
+
+| 层 | 生效参数／设置 | 用途 |
+| --- | --- | --- |
+| 通用编译 | `-O2 -fPIC`；Meson `--buildtype=release` | 优化并生成可链接至动态库的代码 |
+| 依赖解析 | `--wrap-mode=nodownload -Dauto_features=disabled`；私有 prefix 的 pkgconf `--static` | 不自动下载／探测额外系统媒体库 |
+| mpv 产物 | `--default-library=shared -Dlibmpv=true -Dcplayer=false` | 仅交付动态 libmpv，不构建 mpv CLI |
+| mpv 功能 | `-Dgpl=false -Dbuild-date=false -Dgl=disabled -Dmanpage-build=disabled` | 禁用 GPL 可选项、构建日期、OpenGL 和 manpage |
+| Lua | `-Dlua=lua52`，静态 Lua 5.2.4 | 注册现有客户端初始化选项；不是自动开启脚本 |
+| 平台输出 | macOS `-Dcoreaudio=enabled`；Windows `-Dwasapi=enabled -Dwin32-threads=enabled`；Linux `-Dpulse=enabled` | CoreAudio／WASAPI／PulseAudio |
+| FFmpeg 链接 | `--enable-static --disable-shared --enable-pic` | FFmpeg 静态链接到 libmpv |
+| FFmpeg 范围 | `--disable-autodetect --disable-gpl --disable-nonfree --disable-programs --disable-doc --disable-debug` | 固定依赖与许可范围，不附带 ffmpeg/ffprobe 程序 |
+| FFmpeg 媒体功能 | `--disable-avdevice --disable-encoders --disable-muxers` | 只做文件／流的音频解码，不提供采集、编码或封装输出 |
+| FFmpeg 加速 | `--disable-hwaccels --disable-videotoolbox --disable-audiotoolbox --disable-x86asm --disable-v4l2-m2m --disable-vaapi --disable-vdpau --disable-vulkan` | 关闭本配方未使用的硬件／视频能力 |
+| 裁剪 | FFmpeg 禁用 debug；Windows/Linux 对产物 `--strip-unneeded`；不使用 UPX | 去掉不需要的调试信息，保留正常动态库装载与签名流程 |
+
+FFmpeg 在 `--disable-decoders --disable-demuxers --disable-protocols --disable-filters` 后只启用下列白名单。实际完整命令、Meson options、FFmpeg `config.h/config_components.h/config.mak` 及目标工具链信息保存在对应材料包；运行包不携带它们。
+
+### 音频容器与常见扩展名
+
+下表表示**配方已启用相应容器和解码器**，不等于所有变种都已逐一用真实文件验收。扩展名只是示例，最终取决于文件内容和编码；音频轨可位于多种容器中。
+
+| 常见文件 | 容器 demuxer | 主要已启用解码器／说明 |
+| --- | --- | --- |
+| `.wav` | `wav` | PCM、ADPCM 系列 |
+| `.aif`、`.aiff` | `aiff` | PCM、容器可承载的已启用音频编码 |
+| `.flac` | `flac` | `flac` |
+| `.mp1`、`.mp2`、`.mp3` | `mp3` | MP1／MP2／MP3，包括对应 float 实现 |
+| `.aac`（ADTS） | `aac` | AAC；裸 LOAS/LATM 不在此承诺内 |
+| `.m4a`、`.m4b`、`.mp4` 的音频轨 | `mov` | AAC、ALAC 等已启用编码；不提供视频解码 |
+| `.ogg`、`.oga`、`.opus` | `ogg` | Vorbis、Opus、FLAC、Speex 等 |
+| `.mka`、`.webm`、`.mkv` 的音频轨 | `matroska` | Opus、Vorbis、FLAC、AAC 等；不提供视频解码 |
+| `.wma`、`.asf` | `asf` | WMA v1/v2、WMA Pro、Lossless、Voice |
+| `.ape` | `ape` | Monkey's Audio `ape` |
+| `.wv` | `wv` | WavPack `wavpack` |
+| `.tta` | `tta` | True Audio `tta` |
+| `.tak` | `tak` | `tak` |
+| `.mpc` | `mpc`、`mpc8` | Musepack `mpc7`、`mpc8` |
+| `.amr` | `amr` | AMR-NB、AMR-WB |
+| `.ac3`、`.eac3`、`.dts` | `ac3`、`eac3`、`dts` | AC-3、E-AC-3、DTS（`dca`） |
+| `.dsf` | `dsf` | 原始 DSD，`dsd_lsbf_planar` 等 DSD decoder |
+| `.dff`（DSDIFF） | **`iff`** | 原始 DSD 与压缩 **DST**；分别使用 DSD decoder 和 **`dst`** |
+
+完整 demuxer 白名单：
+
+```text
+ape, dsf, iff, flac, wav, aiff, mp3, aac, ogg, mov, matroska,
+asf, wv, tta, tak, mpc, mpc8, amr, ac3, eac3, dts
+```
+
+完整 decoder 请求白名单（`pcm*`、`adpcm*` 为 FFmpeg 通配选择）：
+
+```text
+aac, aac_fixed, aac_latm, ac3, alac, als, amrnb, amrwb, ape,
+atrac1, atrac3, atrac3al, atrac3p, atrac3pal, cook, dca, dolby_e,
+dsd_lsbf, dsd_lsbf_planar, dsd_msbf, dsd_msbf_planar, dst, eac3, flac,
+g723_1, g729, gsm, gsm_ms, iac, imc, mace3, mace6, mlp,
+mp1, mp1float, mp2, mp2float, mp3, mp3float, mp3adu, mp3adufloat,
+mp3on4, mp3on4float, mpc7, mpc8, nellymoser, opus, pcm*, adpcm*,
+qcelp, qdm2, qdmc, ralf, real_144, real_288, s302m, shorten, sipr,
+speex, tak, truehd, truespeech, tta, twinvq, vorbis, wavpack,
+wmalossless, wmapro, wmav1, wmav2, wmavoice
+```
+
+有 decoder 不代表对应裸文件 demuxer 已启用。例如 TrueHD／MLP、Shorten、ATRAC、RealAudio 的 decoder 请求不能推导出裸 `.truehd/.mlp/.shn/.oma/.ra` 文件都能打开。未列入容器白名单的 SACD ISO、CAF、HLS/DASH 等不作支持承诺。
+
+### 协议、音频滤镜与使用方设置
+
+- FFmpeg 启用网络支持，但协议仅为 `file,http,tcp,pipe,crypto`。没有启用直接 HTTPS、FTP、UDP 或 HLS/DASH；应用可使用自身受控网关，将已授权上游音频转为本地 HTTP 入口。
+- 音频滤镜请求为 `aresample,aformat,anull,atempo,volume,pan,abuffer,abuffersink`，用于格式转换、重采样、倍速、音量及音频图连接。此配方不附带完整滤镜集合，不承诺 EQ／频谱功能。
+- Lua 5.2 保留 `load-scripts`、`osc`、`ytdl` 等选项的兼容性。HE-Music 初始化使用 `config=no`、`load-scripts=no`、`osc=no`、`ytdl=no`，关闭配置与脚本自动加载。
+- 网络资源入口、播放设备、字幕／歌词界面及权限控制由使用方负责；库的协议白名单不能代替应用权限边界。
+
+### 已验证范围
+
+- 原始 v1 的五目标原生 CI：WAV、DSF、原始 DFF 的加载、进度、暂停、seek、继续、停止，以及 DST 包内原始帧的 decoder 入口，均使用 `ao=null`。v2 库字节与 v1 相同，重组只改变分发范围。
+- 本机 macOS arm64：正式运行库和 HE-Music 包内库通过真实 DST 算术压缩 DFF 的只读控制回归；合成 DST 原始帧不能替代这一分支。
+- HE-Music 生产网关另外验证了 WAV／DSF／原始 DFF／WebM-Opus 的 `ao=null` race 回归。
+- APE 等其余表中格式是配置层面的支持，没有逐种真实样本通过声明；未验证的压缩变种、设备直通或真实声卡效果不外推。
 
 ## 本机构建
 
