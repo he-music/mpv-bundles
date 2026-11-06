@@ -101,6 +101,8 @@ def extract(archive, destination, expected_root):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with opener(item) as source, target.open('xb') as output: shutil.copyfileobj(source, output)
                 target.chmod(0o755 if ((item.external_attr >> 16) if isinstance(item, zipfile.ZipInfo) else item.mode) & 0o111 else 0o644)
+                if isinstance(item, tarfile.TarInfo):
+                    os.utime(target, (item.mtime, item.mtime))
     return destination / expected_root
 
 
@@ -125,12 +127,25 @@ def validate_dependencies(directory, system):
     result = {}
     for file in native_libraries(directory):
         if system == 'windows':
-            data = file.read_bytes(); pe = struct.unpack_from('<I', data, 0x3C)[0]; deps = []
-            # Conservative PE closure: imported DLL names are read from printable NUL strings.
-            deps = sorted({m.decode().lower() for m in re.findall(rb'([A-Za-z0-9_.-]+\.dll)\0', data)})
-            names = {f.name.lower() for f in native_libraries(directory)}; unknown = [d for d in deps if d not in names and d.removesuffix('.dll') not in SYSTEM_DLLS and not d.startswith(('api-ms-win-', 'ext-ms-win-'))]
-        elif system == 'darwin': deps = re.findall(r'^\s+(\S+) \(', run(['otool', '-L', file], capture=True), re.M); unknown = [d for d in deps if not d.startswith(('/usr/lib/', '/System/Library/')) and not d.startswith('@loader_path/')]
-        else: deps = re.findall(r'\(NEEDED\).*?\[(.*?)\]', run(['readelf', '-d', file], capture=True)); unknown = [d for d in deps if d not in {'libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'librt.so.1', 'libstdc++.so.6', 'libgcc_s.so.1', 'libpulse.so.0', 'ld-linux-x86-64.so.2', 'ld-linux-aarch64.so.1'}]
+            from pe import imports, is_system_dll
+            deps = imports(file)
+            names = {f.name.lower() for f in native_libraries(directory)}
+            unknown = [name for name in deps if name not in names and not is_system_dll(name)]
+        elif system == 'darwin':
+            deps = re.findall(r'^\s+(\S+) \(', run(['otool', '-L', file], capture=True), re.M)
+            names = {value.name for value in native_libraries(directory)}
+            unknown = [name for name in deps if not name.startswith(('/usr/lib/', '/System/Library/'))
+                       and not (name.startswith('@loader_path/') and name == '@loader_path/' + Path(name).name
+                                and Path(name).name in names)]
+        else:
+            dynamic = run(['readelf', '-d', file], capture=True)
+            search_paths = re.findall(r'\((?:RUNPATH|RPATH)\).*?\[(.*?)\]', dynamic)
+            if any(part not in ('', '$ORIGIN') for value in search_paths for part in value.split(':')):
+                raise ValueError(f'{file.name}: non-portable ELF runtime search path')
+            deps = re.findall(r'\(NEEDED\).*?\[(.*?)\]', dynamic)
+            allowed = {'libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'librt.so.1',
+                       'libstdc++.so.6', 'libgcc_s.so.1', 'libpulse.so.0', 'ld-linux-x86-64.so.2', 'ld-linux-aarch64.so.1'}
+            unknown = [name for name in deps if name not in allowed]
         if unknown: raise ValueError(f'{file.name}: undeclared dependencies {unknown}')
         result[file.name] = deps
     if not result: raise ValueError('No native library')
@@ -139,7 +154,7 @@ def validate_dependencies(directory, system):
 
 def recipe_digest():
     value = hashlib.sha256()
-    for file in (LOCK, Path(__file__), Path(__file__).with_name('smoke.py'), Path(__file__).with_name('build.py'), ROOT / 'requirements-build.txt'):
+    for file in (LOCK, Path(__file__), Path(__file__).with_name('smoke.py'), Path(__file__).with_name('build.py'), Path(__file__).with_name('audit_linux.py'), Path(__file__).with_name('pe.py'), ROOT / 'requirements-build.txt'):
         value.update(file.read_bytes())
     return value.hexdigest()
 
@@ -148,7 +163,7 @@ def inventory(directory):
     result = {}
     for file in sorted(Path(directory).rglob('*')):
         if file.is_symlink() or not (file.is_file() or file.is_dir()): raise ValueError(f'Invalid bundle entry: {file}')
-        if file.is_file() and file.name != 'manifest.json': result[file.relative_to(directory).as_posix()] = {'sha256': digest(file), 'size': file.stat().st_size}
+        if file.is_file() and file != Path(directory) / 'manifest.json': result[file.relative_to(directory).as_posix()] = {'sha256': digest(file), 'size': file.stat().st_size}
     return result
 
 
@@ -157,7 +172,10 @@ def verify(directory, target, inspect=True):
     if manifest.get('recipeSHA256') != recipe_digest() or manifest.get('target') != target: raise ValueError('Bundle target or recipe mismatch')
     if manifest.get('files') != inventory(directory): raise ValueError('Bundle inventory mismatch')
     system, arch = target.split('/'); required = {'amd64', 'arm64'} if arch == 'universal' else {arch}
-    if binary_arches(Path(directory) / LIBRARIES[system]) != required: raise ValueError('Library architecture mismatch')
+    if not (Path(directory) / LIBRARIES[system]).is_file():
+        raise ValueError('Missing primary libmpv library')
+    if any(binary_arches(file) != required for file in native_libraries(directory)):
+        raise ValueError('Library architecture mismatch')
     if inspect and validate_dependencies(directory, system) != manifest['dependencies']: raise ValueError('Dynamic dependencies changed')
     return manifest
 
@@ -201,7 +219,22 @@ def universal(cache, offline=False, jobs=4, force=False):
     with tempfile.TemporaryDirectory(prefix='mpv-universal-', dir=cache) as temporary:
         output = Path(temporary) / 'mpv'; shutil.copytree(halves[0], output); (output / 'manifest.json').unlink(); (output / 'validation.json').unlink(missing_ok=True)
         run(['lipo', '-create', *[h / 'libmpv.2.dylib' for h in halves], '-output', output / 'libmpv.2.dylib']); run(['codesign', '--force', '--sign', '-', output / 'libmpv.2.dylib']); run([sys.executable, Path(__file__).with_name('smoke.py'), '--resources', output, '--output', output / 'validation.json'])
-        write_manifest(output, 'darwin/universal', {'kind': 'universal', 'runtimeSmoke': 'validation.json'}); destination.parent.mkdir(parents=True, exist_ok=True); replace_tree(output, destination)
+        shutil.rmtree(output / 'build-config')
+        for half in halves:
+            half_manifest = json.loads((half / 'manifest.json').read_text())
+            arch = half_manifest['target'].split('/')[1]
+            folder = output / 'build-config' / arch
+            shutil.copytree(half / 'build-config', folder)
+            shutil.copy2(half / 'build-info.json', folder / 'build-info.json')
+            shutil.copy2(half / 'manifest.json', folder / 'slice-manifest.json')
+        details = {'kind': 'universal', 'runtimeSmoke': 'validation.json',
+                   'runtimeArchitecture': host()[1], 'correspondingSourceStatus': 'project-fixed-sources',
+                   'slices': ['arm64', 'amd64']}
+        atomic_json(output / 'build-info.json', {**details, 'target': 'darwin/universal',
+                    'commit': os.environ.get('GITHUB_SHA', 'local'), 'dstDecoder': True})
+        write_manifest(output, 'darwin/universal', details)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        replace_tree(output, destination)
     return destination
 
 

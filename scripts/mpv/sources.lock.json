@@ -4,8 +4,9 @@
   "clientAPI": "2.6",
   "linuxBuildImage": "ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11",
   "linuxGlibcBaseline": "2.35",
-  "scripts": "disabled",
+  "scripts": "supported; consumers must disable automatic loading",
   "sources": {
+    "lua": {"version": "5.2.4", "url": "https://lua.org/ftp/lua-5.2.4.tar.gz", "sha256": "b9e2e4aad6789b3b63a056d442f7b39f0ecfca3ae0f1fc0ae4e9614401b69f4b", "root": "lua-5.2.4", "licenses": ["doc/readme.html"]},
     "pkgconf": {"version": "2.5.1", "url": "https://distfiles.ariadne.space/pkgconf/pkgconf-2.5.1.tar.xz", "sha256": "cd05c9589b9f86ecf044c10a2269822bc9eb001eced2582cfffd658b0a50c243", "root": "pkgconf-2.5.1", "licenses": ["COPYING"]},
     "fast_float": {"version": "8.1.0", "url": "https://codeload.github.com/fastfloat/fast_float/tar.gz/refs/tags/v8.1.0", "filename": "fast_float-8.1.0.tar.gz", "sha256": "4bfabb5979716995090ce68dce83f88f99629bc17ae280eae79311c5340143e1", "root": "fast_float-8.1.0", "licenses": ["LICENSE-MIT", "LICENSE-APACHE"]},
     "vulkan-headers": {"version": "1.4.321", "url": "https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/refs/tags/v1.4.321", "filename": "vulkan-headers-1.4.321.tar.gz", "sha256": "7c1874f9186d9e7d5245e279cdccaa77a66ed8f52871b428630aeb771dc7623c", "root": "Vulkan-Headers-1.4.321", "licenses": ["LICENSE.md", "LICENSES/Apache-2.0.txt", "LICENSES/MIT.txt"]},

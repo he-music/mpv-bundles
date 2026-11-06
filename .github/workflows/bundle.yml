@@ -1,94 +1,189 @@
-name: bundle
+name: Build libmpv bundles
+
 "on":
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Bundle version (v<mpv>-<recipe revision>)"
+        type: string
+        default: v0.42.0-1
   push:
     tags:
       - "v*"
-permissions: {contents: write}
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "tests/**"
+      - "requirements-*.txt"
+      - ".github/workflows/bundle.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bundles-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: python -m pip install -r requirements-test.txt
+      - run: python -m unittest discover -s tests -v
+      - run: python -m compileall -q scripts tests
+      - name: Validate bundle version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.42.0-1' }}
+        run: |
+          python - <<'PY'
+          import os
+          from scripts.release import version_string
+          value = version_string(os.environ['REQUESTED_VERSION'])
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'value={value}\n')
+          PY
+
   build:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {target: darwin/universal, asset_name: darwin-universal, os: macos-13}
-          - {target: windows/amd64, asset_name: windows-amd64, os: windows-2025, msystem: CLANG64}
-          - {target: windows/arm64, asset_name: windows-arm64, os: windows-11-arm, msystem: CLANGARM64}
-          - {target: linux/amd64, asset_name: linux-amd64, os: ubuntu-24.04}
-          - {target: linux/arm64, asset_name: linux-arm64, os: ubuntu-24.04-arm}
+          - target: darwin/universal
+            asset_name: darwin-universal
+            os: macos-15-intel
+          - target: windows/amd64
+            asset_name: windows-amd64
+            os: windows-2025
+            msystem: CLANG64
+            mingw: mingw-w64-clang-x86_64
+          - target: windows/arm64
+            asset_name: windows-arm64
+            os: windows-11-arm
+            msystem: CLANGARM64
+            mingw: mingw-w64-clang-aarch64
+          - target: linux/amd64
+            asset_name: linux-amd64
+            os: ubuntu-24.04
+          - target: linux/arm64
+            asset_name: linux-arm64
+            os: ubuntu-24.04-arm
     runs-on: ${{ matrix.os }}
+    env:
+      BUNDLE_VERSION: ${{ needs.validate.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+      - name: Cache validated source archives
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/mpv-cache/*.tar.*
+          key: mpv-sources-${{ hashFiles('scripts/mpv/sources.lock.json') }}
       - name: Prepare Linux bundle in locked container
         if: startsWith(matrix.target, 'linux/')
         shell: bash
         env:
-          BUNDLE_GITHUB_SHA: "${{ github.sha }}"
-          BUNDLE_GITHUB_REPOSITORY: "${{ github.repository }}"
-          BUNDLE_GITHUB_RUN_ID: "${{ github.run_id }}"
-        run: docker run --rm -e GITHUB_SHA="$BUNDLE_GITHUB_SHA" -e GITHUB_REPOSITORY="$BUNDLE_GITHUB_REPOSITORY" -e GITHUB_RUN_ID="$BUNDLE_GITHUB_RUN_ID" -v "$PWD:/work" -w /work ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11 bash -lc 'apt-get update && apt-get install -y ca-certificates build-essential binutils libpulse-dev python3-venv xz-utils && python3 -m venv build/tools && build/tools/bin/pip install -r requirements-build.txt && PATH="$PWD/build/tools/bin:$PATH" build/tools/bin/python scripts/mpv/prepare.py --target ${{ matrix.target }}'
-      - name: Install MSYS2 toolchain and native Python
+          BUNDLE_GITHUB_SHA: ${{ github.sha }}
+          BUNDLE_GITHUB_REPOSITORY: ${{ github.repository }}
+          BUNDLE_GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          docker run --rm \
+            -e GITHUB_SHA="$BUNDLE_GITHUB_SHA" \
+            -e GITHUB_REPOSITORY="$BUNDLE_GITHUB_REPOSITORY" \
+            -e GITHUB_RUN_ID="$BUNDLE_GITHUB_RUN_ID" \
+            -e BUNDLE_VERSION -e BUNDLE_TARGET="${{ matrix.target }}" \
+            -v "$PWD:/work" -w /work \
+            ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11 \
+            bash -ec '
+              apt-get update
+              apt-get install -y ca-certificates build-essential binutils libpulse-dev python3-venv xz-utils
+              python3 -m venv build/tools
+              export PATH="$PWD/build/tools/bin:$PATH"
+              python -m pip install -r requirements-build.txt
+              python scripts/mpv/prepare.py --target "$BUNDLE_TARGET"
+              python scripts/mpv/prepare.py --check --offline --target "$BUNDLE_TARGET"
+              python scripts/release.py package --target "$BUNDLE_TARGET" --version "$BUNDLE_VERSION"
+            '
+      - name: Install native Windows toolchain
         if: startsWith(matrix.target, 'windows/')
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
         with:
           msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            mingw-w64-${{ matrix.msystem == 'CLANGARM64' && 'clang-aarch64' || 'clang-x86_64' }}-toolchain
-            mingw-w64-${{ matrix.msystem == 'CLANGARM64' && 'clang-aarch64' || 'clang-x86_64' }}-python
-            mingw-w64-${{ matrix.msystem == 'CLANGARM64' && 'clang-aarch64' || 'clang-x86_64' }}-python-pip
-            make
-      - name: Install Windows Python build requirements
+            make diffutils tar xz
+            ${{ matrix.mingw }}-toolchain
+            ${{ matrix.mingw }}-python
+            ${{ matrix.mingw }}-ninja
+            ${{ matrix.mingw }}-python-pip
+      - name: Build and package Windows bundle
         if: startsWith(matrix.target, 'windows/')
         shell: msys2 {0}
-        run: python -m pip install -r requirements-build.txt
-      - name: Prepare Windows bundle
-        if: startsWith(matrix.target, 'windows/')
-        shell: msys2 {0}
-        env:
-          GITHUB_SHA: "${{ github.sha }}"
-          GITHUB_REPOSITORY: "${{ github.repository }}"
-          GITHUB_RUN_ID: "${{ github.run_id }}"
-        run: python scripts/mpv/prepare.py --target ${{ matrix.target }}
-      - name: Install macOS build requirements
+        run: |
+          python -m pip install -r requirements-build.txt
+          python scripts/mpv/prepare.py --target "${{ matrix.target }}"
+          python scripts/mpv/prepare.py --check --offline --target "${{ matrix.target }}"
+          python scripts/release.py package --target "${{ matrix.target }}" --version "$BUNDLE_VERSION"
+      - name: Build and package macOS universal bundle
         if: matrix.target == 'darwin/universal'
-        run: python3 -m pip install -r requirements-build.txt
-      - name: Prepare macOS bundle
-        if: matrix.target == 'darwin/universal'
-        env:
-          GITHUB_SHA: "${{ github.sha }}"
-          GITHUB_REPOSITORY: "${{ github.repository }}"
-          GITHUB_RUN_ID: "${{ github.run_id }}"
-        run: python3 scripts/mpv/prepare.py --target darwin/universal
-      - name: Run tests and syntax checks
-        run: python3 -m unittest discover -s tests -v && python3 -m py_compile scripts/mpv/*.py
-      - name: Package target bundle
         shell: bash
-        run: tar -czf "libmpv-${{ matrix.asset_name }}.tar.gz" -C "build/mpv-cache/prepared/${{ matrix.asset_name }}" mpv
+        run: |
+          python3 -m venv build/tools
+          source build/tools/bin/activate
+          python -m pip install -r requirements-build.txt
+          python scripts/mpv/prepare.py --target darwin/universal
+          python scripts/mpv/prepare.py --check --offline --target darwin/universal
+          python scripts/release.py package --target darwin/universal --version "$BUNDLE_VERSION"
       - uses: actions/upload-artifact@v4
         with:
           name: libmpv-${{ matrix.asset_name }}
-          path: libmpv-${{ matrix.asset_name }}.tar.gz
+          path: dist/libmpv-${{ matrix.asset_name }}-${{ needs.validate.outputs.version }}.tar.gz
           if-no-files-found: error
+          retention-days: 14
+      - name: Preserve build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.asset_name }}
+          path: |
+            build/mpv-cache/diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
+
   release-draft:
-    needs: build
+    needs: [validate, build]
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-22.04
-    permissions: {contents: write}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-        with: {fetch-depth: 1}
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
       - uses: actions/download-artifact@v4
-        with: {path: release-assets}
-      - name: Build checksums and final archive
-        shell: bash
-        run: |
-          final="libmpv-bundles-${GITHUB_REF_NAME}.tar.gz"
-          tar -czf "$final" release-assets
-          find release-assets -type f -name '*.tar.gz' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
-          sha256sum "$final" >> SHA256SUMS
-          sha256sum SHA256SUMS > SHA256SUMS.sha256
+        with:
+          pattern: libmpv-*
+          path: dist
+          merge-multiple: true
+      - name: Verify all five bundles and create download manifest
+        env:
+          BUNDLE_VERSION: ${{ needs.validate.outputs.version }}
+        run: python scripts/release.py index --version "$BUNDLE_VERSION"
       - name: Create draft release
         env:
-          GH_TOKEN: "${{ github.token }}"
-        run: gh release create "$GITHUB_REF_NAME" --repo "${{ github.repository }}" "libmpv-bundles-${GITHUB_REF_NAME}.tar.gz" SHA256SUMS SHA256SUMS.sha256 --draft --title "$GITHUB_REF_NAME" --notes-file README.md
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          gh release create "$BUNDLE_VERSION" --repo "${{ github.repository }}" \
+            dist/*.tar.gz dist/manifest.json dist/SHA256SUMS \
+            --draft --title "$BUNDLE_VERSION" --notes-file README.md

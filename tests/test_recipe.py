@@ -40,10 +40,10 @@ class RecipeTests(unittest.TestCase):
 
     def test_scripts_disabled_and_dst_sample_is_explicit(self):
         text = (ROOT / 'scripts/mpv/build.py').read_text()
-        self.assertIn("'-Dlua=disabled'", text)
-        self.assertNotIn("'-Dlua=lua52'", text)
+        self.assertIn("'-Dlua=lua52'", text)
+        self.assertNotIn("'-Dlua=disabled'", text)
         smoke_text = (ROOT / 'scripts/mpv/smoke.py').read_text()
-        self.assertIn("codec != 'dst'", smoke_text)
+        self.assertIn('codec != "dst"', smoke_text)
         self.assertIn('not-executed: no --dst-sample supplied', smoke_text)
 
     def test_workflow_release_and_platform_contracts(self):

@@ -11,6 +11,7 @@ def audit(root, target, baseline='2.35'):
     system, arch = target.split('/')
     if system != 'linux': raise ValueError('Linux target required')
     records = {}
+    dependencies = prepare.validate_dependencies(root, 'linux')
     limit = tuple(map(int, baseline.split('.')))
     for file in root.rglob('*'):
         if not file.is_file(): continue
@@ -23,7 +24,7 @@ def audit(root, target, baseline='2.35'):
         if required and max(required) > limit: raise ValueError(f'{file} requires GLIBC_{".".join(map(str, max(required)))}')
         records[file.relative_to(root).as_posix()] = versions
     if not records: raise ValueError('no ELF files in Linux bundle')
-    return {'target': target, 'libmpvBuildBaseline': 'Ubuntu 22.04 / glibc 2.35', 'elfSymbolVersions': records, 'desktopCompatibilityVerified': False}
+    return {'target': target, 'libmpvBuildBaseline': 'Ubuntu 22.04 / glibc 2.35', 'elfSymbolVersions': records, 'dependencies': dependencies, 'desktopCompatibilityVerified': False}
 
 
 def main():
