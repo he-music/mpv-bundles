@@ -56,7 +56,7 @@ macOS universal 的两个架构配置与原生验证证据保留在材料包；�
 | FFmpeg 加速 | `--disable-hwaccels --disable-videotoolbox --disable-audiotoolbox --disable-x86asm --disable-v4l2-m2m --disable-vaapi --disable-vdpau --disable-vulkan` | 关闭本配方未使用的硬件／视频能力 |
 | 裁剪 | FFmpeg 禁用 debug；Windows/Linux 对产物 `--strip-unneeded`；不使用 UPX | 去掉不需要的调试信息，保留正常动态库装载与签名流程 |
 
-FFmpeg 在 `--disable-decoders --disable-demuxers --disable-protocols --disable-filters` 后只启用下列白名单。实际完整命令、Meson options、FFmpeg `config.h/config_components.h/config.mak` 及目标工具链信息保存在对应材料包；运行包不携带它们。
+FFmpeg 在 `--disable-decoders --disable-demuxers --disable-protocols --disable-filters` 后按下列白名单请求功能；实际生效项及例外见下文。实际完整命令、Meson options、FFmpeg `config.h/config_components.h/config.mak` 及目标工具链信息保存在对应材料包；运行包不携带它们。
 
 ### 音频容器与常见扩展名
 
@@ -103,6 +103,8 @@ qcelp, qdm2, qdmc, ralf, real_144, real_288, s302m, shorten, sipr,
 speex, tak, truehd, truespeech, tta, twinvq, vorbis, wavpack,
 wmalossless, wmapro, wmav1, wmav2, wmavoice
 ```
+
+当前实际配置的例外：历史请求名 `real_144`、`real_288` 未启用对应的 `ra_144`、`ra_288` decoder（实际配置为 0），因此不将这两项计入本版本已启用能力。其余非通配请求已与实际 `config_components.h` 核对；通配项表示所匹配的 PCM／ADPCM 实现。
 
 有 decoder 不代表对应裸文件 demuxer 已启用。例如 TrueHD／MLP、Shorten、ATRAC、RealAudio 的 decoder 请求不能推导出裸 `.truehd/.mlp/.shn/.oma/.ra` 文件都能打开。未列入容器白名单的 SACD ISO、CAF、HLS/DASH 等不作支持承诺。
 
