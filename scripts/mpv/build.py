@@ -85,7 +85,7 @@ def source_build(target, stage, cache, lock, offline, jobs):
     commands = []
     def execute(args, cwd=None, custom_env=None):
         commands.append(p.command_args(args)); return p.run(args, cwd, custom_env or env)
-    tool_env = {**env, 'CC': 'clang' if system == 'windows' else 'cc', 'CXX': 'clang++' if system == 'windows' else 'c++', 'CFLAGS': '-O2', 'CXXFLAGS': '-O2', 'LDFLAGS': ''}
+    tool_env = {**env, 'CC': 'clang' if system == 'windows' else 'cc', 'CXX': 'clang++' if system == 'windows' else 'c++', 'CFLAGS': '-O2', 'CXXFLAGS': '-O2', 'LDFLAGS': '', 'CPPFLAGS': '-DPKGCONFIG_IS_STATIC' if system == 'windows' else ''}
     execute([sources['pkgconf'] / 'configure', f'--prefix={prefix}', '--disable-shared'], sources['pkgconf'], tool_env); execute(['make', f'-j{jobs}'], sources['pkgconf'], tool_env); execute(['make', 'install'], sources['pkgconf'], tool_env)
     if system == 'windows':
         pkgconf = prefix / 'bin/pkgconf.exe'; env['PKG_CONFIG'] = pkgconf.as_posix(); native = stage / 'windows-native.ini'; native.write_text("[binaries]\nc = 'clang'\ncpp = 'clang++'\nar = 'llvm-ar'\nstrip = 'llvm-strip'\npkg-config = ['" + pkgconf.as_posix() + "', '--static']\n", encoding='utf-8'); cross_options = ['--native-file', native]; ffmpeg_cross = ['--target-os=mingw32', '--arch=' + ('aarch64' if arch == 'arm64' else 'x86_64'), '--cc=clang', '--cxx=clang++', '--ar=llvm-ar', '--ranlib=llvm-ranlib', '--nm=llvm-nm', '--pkg-config=' + env['PKG_CONFIG'], '--pkg-config-flags=--static']
