@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -83,8 +84,10 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             output = root / "dist"
+            expected_manifests = {}
             for target in sorted(prepare.TARGETS):
                 manifest = self.fixture(root, target)
+                expected_manifests[target] = hashlib.sha256(json.dumps(manifest).encode()).hexdigest()
                 with patch.object(prepare, "verify", return_value=manifest):
                     archive = release.package(target, "v0.42.0-1", output, root)
                     digest = prepare.digest(archive)
@@ -93,6 +96,7 @@ class ReleaseTests(unittest.TestCase):
                     self.assertEqual(prepare.digest(archive), digest)
             result = release.index("v0.42.0-1", output)
             self.assertEqual(set(result["targets"]), prepare.TARGETS)
+            self.assertEqual({target: item["manifestSHA256"] for target, item in result["targets"].items()}, expected_manifests)
             lines = (output / "SHA256SUMS").read_text().splitlines()
             self.assertEqual(len(lines), 6)
             self.assertFalse(any(line.endswith("  SHA256SUMS") for line in lines))

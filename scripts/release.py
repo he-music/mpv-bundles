@@ -98,6 +98,12 @@ def archive_manifest(file):
         return manifest
 
 
+def archive_manifest_digest(file):
+    with tarfile.open(file, "r:gz") as archive:
+        with archive.extractfile("mpv/manifest.json") as source:
+            return hashlib.sha256(source.read()).hexdigest()
+
+
 def index(version, directory):
     version_string(version)
     lock = json.loads(prepare.LOCK.read_text())
@@ -120,6 +126,7 @@ def index(version, directory):
             raise ValueError("归档目标与资源名不一致")
         result["targets"][target] = {
             "asset": file.name, "sha256": prepare.digest(file), "size": file.stat().st_size,
+            "manifestSHA256": archive_manifest_digest(file),
             "root": "mpv", "library": prepare.LIBRARIES[target.split("/")[0]],
             "url": f"https://github.com/he-music/mpv-bundles/releases/download/{version}/{file.name}",
             "correspondingSourceStatus": manifest.get("details", {}).get("correspondingSourceStatus", "not-recorded"),
