@@ -43,7 +43,9 @@ def command_args(args):
     if sys.platform == 'win32':
         values = [value.replace('\\', '/') for value in values]
         if Path(values[0]).name == 'configure':
-            return ['bash', subprocess.check_output(['cygpath', '-u', values[0]], text=True).strip(), *values[1:]]
+            bash = subprocess.check_output(['cygpath', '-m', '/usr/bin/bash.exe'], text=True).strip()
+            script = subprocess.check_output(['cygpath', '-u', values[0]], text=True).strip()
+            return [bash, script, *values[1:]]
     return values
 
 
@@ -203,7 +205,17 @@ def prepare(target, cache, offline=False, jobs=4, force=False):
     if destination.exists() and not force: verify(destination, target); return destination
     destination.parent.mkdir(parents=True, exist_ok=True); started = recipe_digest()
     with tempfile.TemporaryDirectory(prefix='mpv-build-', dir=cache) as temporary:
-        output, details = source_build(target, Path(temporary), cache, json.loads(LOCK.read_text()), offline, jobs)
+        try:
+            output, details = source_build(target, Path(temporary), cache, json.loads(LOCK.read_text()), offline, jobs)
+        except Exception:
+            diagnostics = cache / 'diagnostics' / target.replace('/', '-')
+            for file in Path(temporary).rglob('*'):
+                if file.is_file() and file.name in {'meson-log.txt', 'config.log', 'config.h', 'config_components.h'}:
+                    destination_log = diagnostics / file.relative_to(temporary)
+                    destination_log.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(file, destination_log)
+                    destination_log.chmod(0o644)
+            raise
         if recipe_digest() != started: raise ValueError('Recipe changed during build')
         system, arch = host()
         if target == f'{system}/{arch}': run([sys.executable, Path(__file__).with_name('smoke.py'), '--resources', output, '--output', output / 'validation.json']); details['runtimeSmoke'] = 'validation.json'

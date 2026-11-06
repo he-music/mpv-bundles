@@ -12,6 +12,14 @@ import prepare
 
 
 class DependencyTests(unittest.TestCase):
+    def test_windows_configure_uses_msys_bash_instead_of_wsl(self):
+        with patch.object(prepare.sys, "platform", "win32"), patch.object(
+            prepare.subprocess, "check_output", side_effect=["C:/msys64/usr/bin/bash.exe\n", "/d/work/configure\n"]
+        ) as output:
+            command = prepare.command_args(["D:/work/configure", "--disable-shared"])
+        self.assertEqual(command, ["C:/msys64/usr/bin/bash.exe", "/d/work/configure", "--disable-shared"])
+        self.assertEqual(output.call_args_list[0].args[0], ["cygpath", "-m", "/usr/bin/bash.exe"])
+
     def test_pe_reads_import_table_and_ignores_unrelated_dll_strings(self):
         data = bytearray(0x600)
         data[:2] = b"MZ"

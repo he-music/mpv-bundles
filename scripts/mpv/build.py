@@ -81,7 +81,7 @@ def source_build(target, stage, cache, lock, offline, jobs):
     elif system == 'linux':
         triplet = 'aarch64-linux-gnu' if arch == 'arm64' else 'x86_64-linux-gnu'; env['PKG_CONFIG_LIBDIR'] += f':/usr/lib/{triplet}/pkgconfig:/usr/share/pkgconfig'
     else:
-        env.update(CC='clang', CXX='clang++', AR='llvm-ar', RANLIB='llvm-ranlib', CFLAGS='-O2', CXXFLAGS='-O2', LDFLAGS='-static -static-libgcc -static-libstdc++'); env['SHELL'] = p.run(['cygpath', '-u', shutil.which('bash')], capture=True).strip()
+        env.update(CC='clang', CXX='clang++', AR='llvm-ar', RANLIB='llvm-ranlib', CFLAGS='-O2', CXXFLAGS='-O2', LDFLAGS='-static -static-libgcc -static-libstdc++'); env['SHELL'] = '/usr/bin/bash'
     commands = []
     def execute(args, cwd=None, custom_env=None):
         commands.append(p.command_args(args)); return p.run(args, cwd, custom_env or env)
