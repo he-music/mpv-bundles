@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """在完整构建前用真实 Windows 链接快速验证 map 格式与运行库归属。"""
+import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import sys
+import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,10 +32,24 @@ def main():
         prepare.run(["clang++", "-std=c++17", "-O2", "-c", "probe.cpp", "-o", "probe.obj"], build)
         map_file = stage / "probe.map"
         prepare.run(["clang++", "-shared", "-static", "probe.obj", "-o", output / "probe.dll",
-                     "-Wl,-Map," + map_file.as_posix()], build)
+                     "-Wl,-Map," + map_file.as_posix(),
+                     "-Wl,--reproduce=" + map_file.with_suffix(".repro.tar").as_posix()], build)
         diagnostic = ROOT / "build/mpv-cache/diagnostics/windows-link-probe.map"
         diagnostic.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(map_file, diagnostic)
+        reproduction = []
+        with tarfile.open(map_file.with_suffix(".repro.tar"), "r:") as archive:
+            for member in archive:
+                if not member.isfile():
+                    continue
+                with archive.extractfile(member) as stream:
+                    data = stream.read()
+                record = {"name": member.name, "size": len(data),
+                          "sha256": hashlib.sha256(data).hexdigest()}
+                if member.name.endswith(("/response.txt", "/version.txt")):
+                    record["text"] = data.decode("utf-8")
+                reproduction.append(record)
+        prepare.atomic_json(diagnostic.with_suffix(".repro.json"), reproduction)
         evidence = capture_link_evidence(map_file, prefix, native, output)
         owners = sorted({record["owner"] for record in evidence["inputs"]})
         print(json.dumps({"nativeLinkProbe": "passed", "inputs": len(evidence["inputs"]), "owners": owners}))

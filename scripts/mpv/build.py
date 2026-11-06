@@ -121,6 +121,7 @@ def source_build(target, stage, cache, lock, offline, jobs):
     if system == 'windows':
         link_map = stage / 'mpv-link.map'
         env['LDFLAGS'] += f' -Wl,-Map,"{link_map.as_posix()}"'
+        env['LDFLAGS'] += f' -Wl,--reproduce="{link_map.with_suffix(".repro.tar").as_posix()}"'
     adjustments = [apply_coreaudio_fix(sources['mpv'])] if system == 'darwin' else []
     mpv_options = ['--default-library=shared', '-Dgpl=false', '-Dcplayer=false', '-Dlibmpv=true', '-Dbuild-date=false', '-Dlua=lua52', '-Dgl=disabled', '-Dmanpage-build=disabled'] + (['-Dcoreaudio=enabled'] if system == 'darwin' else ['-Dwasapi=enabled', '-Dwin32-threads=enabled'] if system == 'windows' else ['-Dpulse=enabled'])
     meson('mpv', mpv_options)
