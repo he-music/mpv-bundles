@@ -1,6 +1,6 @@
 # libmpv 发布材料与许可证
 
-每个目标压缩包包含该次构建使用的源码归档、SHA256、构建脚本、配置和上游许可证。
+运行压缩包保留实际动态库与必要上游许可证；同版本的独立共享材料包保存对应源码归档、SHA256、构建脚本、配置和链接证据。
 libmpv 以可独立替换的动态库交付，使用方需遵守相应 LGPL 的修改、重新链接和源码提供要求。
 
 本仓库构建／验证脚本由 HE-Music 的工具迁移而来，沿用根目录 [LICENSE](LICENSE) 中的
@@ -20,14 +20,14 @@ FreeType 声明：Portions of this software are copyright © 2025 The FreeType P
 (https://freetype.org). All rights reserved.
 
 `load-scripts=no` 由消费方初始化时设置，Lua 本身仍包含在库内。
-`rebuild/` 保存确切的构建脚本；`build-config/` 保存编译选项和补丁结果摘要，源码归档保持上游原样。
+材料包的共享 `rebuild/` 保存确切的构建脚本；`targets/<目标>/build-config/` 保存编译选项和补丁结果摘要，源码归档保持上游原样。
 
 Windows 包固定原生 MSYS2 工具链／运行库的版本、许可证摘要和实际随包 DLL 摘要。最终 LLD
-map、实际使用的 archive／object 摘要及包归属保存在 `build-config/`；核对记录位于
+map、实际使用的 archive／object 摘要及包归属保存在材料包的 `targets/<目标>/build-config/`；核对记录位于
 `windows-runtime-review.json`。缺失或变化的材料会阻止发行，仍为
 `pending-toolchain-runtime-review` 的产物不能进入发行清单。
 
-`sources/windows/` 提供 libiconv 1.19.1 的完整上游源码、固定 MinGW 源树及匹配的 MSYS2
+材料包的共享 `sources/` 提供 libiconv 1.19.1 的完整上游源码、固定 MinGW 源树及匹配的 MSYS2
 配方／补丁快照，保守覆盖可能使用的 LGPL headers/runtime。LLVM 部分保留实际
 Apache-2.0 WITH LLVM-exception 和历史 notices，并记录包版本及固定的上游源码／补丁配方；
 该配方快照不表示已经内含 LLVM 完整上游源码。上述记录不声称静态或 LGPL 代码不存在。

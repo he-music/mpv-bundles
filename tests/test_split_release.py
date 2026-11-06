@@ -81,6 +81,13 @@ class SplitReleaseTests(unittest.TestCase):
                                  (0o644, 0, 0, 0, '', ''))
             return {e.name.removeprefix(root + '/'): archive.extractfile(e).read() for e in members}
 
+    def test_native_workflow_can_split_unpublished_same_version_inputs(self):
+        before = (self.source / 'manifest.json').read_bytes()
+        result = s.split('v0.42.0-1', self.source, self.output, self.trusted)
+        self.assertEqual(result['schemaVersion'], 2)
+        self.assertEqual(result['bundleVersion'], result['origin']['bundleVersion'])
+        self.assertEqual((self.source / 'manifest.json').read_bytes(), before)
+
     def test_deterministic_assets_binary_license_bytes_and_schema_binding(self):
         result = self.run_split()
         self.assertEqual(result['schemaVersion'], 2)
@@ -115,8 +122,10 @@ class SplitReleaseTests(unittest.TestCase):
                 self.assertEqual(files[name], self.originals[target][name])
             for name in entry['licenseFiles']:
                 self.assertTrue(name.startswith('licenses/'))
-                if name != 'licenses/SOURCE-MATERIALS.json':
+                if name not in ('licenses/SOURCE-MATERIALS.json', 'licenses/NOTICE.txt'):
                     self.assertEqual(files[name], self.originals[target][name])
+            self.assertIn(b'The FreeType Project', files['licenses/NOTICE.txt'])
+            self.assertIn(pointer['url'].encode(), files['licenses/NOTICE.txt'])
             notice = json.loads(files['licenses/SOURCE-MATERIALS.json'])
             self.assertEqual(notice['materials'], pointer)
             self.assertEqual(notice['origin'], result['origin'])

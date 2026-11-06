@@ -188,12 +188,17 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: libmpv-*
-          path: dist
+          path: build/full-bundles
           merge-multiple: true
       - name: Verify all five bundles and create download manifest
         env:
           BUNDLE_VERSION: ${{ needs.validate.outputs.version }}
-        run: python scripts/release.py index --version "$BUNDLE_VERSION"
+        run: |
+          python scripts/release.py index --version "$BUNDLE_VERSION" --output-dir build/full-bundles
+          SOURCE_INDEX_SHA=$(sha256sum build/full-bundles/manifest.json | cut -d ' ' -f 1)
+          python scripts/split_release.py --version "$BUNDLE_VERSION" \
+            --input-dir build/full-bundles --output-dir dist \
+            --expected-source-manifest-sha256 "$SOURCE_INDEX_SHA"
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}

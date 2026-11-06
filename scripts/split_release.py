@@ -125,8 +125,8 @@ def split(version, input_dir, output_dir, expected_source_manifest_sha256):
     index = json.loads(original_index)
     if index.get("schemaVersion") != 1 or set(index.get("targets", {})) != set(TARGETS):
         raise ValueError("来源必须是五目标完整schema 1")
-    if not version.startswith(f"v{index['mpvVersion']}-") or version == index['bundleVersion']:
-        raise ValueError("新版本必须保持mpv版本并区别于来源版本")
+    if not version.startswith(f"v{index['mpvVersion']}-"):
+        raise ValueError("发布版本必须保持来源mpv版本")
     expected_names = {"manifest.json", "SHA256SUMS"} | {asset(t, index['bundleVersion']) for t in TARGETS}
     if {p.name for p in input_dir.iterdir()} != expected_names or any(not p.is_file() or p.is_symlink() for p in input_dir.iterdir()):
         raise ValueError("来源目录含额外、缺失或非普通文件")
@@ -177,7 +177,7 @@ def split(version, input_dir, output_dir, expected_source_manifest_sha256):
             if target.startswith('windows/') and 'libiconv-2.dll' not in binaries:
                 raise ValueError("Windows缺少libiconv-2.dll")
             licenses = {n: f for n, f in files.items() if n.startswith('licenses/')}
-            if not licenses or 'licenses/SOURCE-MATERIALS.json' in licenses:
+            if not licenses or any(name in licenses for name in ('licenses/SOURCE-MATERIALS.json', 'licenses/NOTICE.txt')):
                 raise ValueError("来源licenses无效")
             mapping = {"sources": {}, "rebuild": {}, "targetFiles": {}, "excludedLogs": [],
                        "originalManifestSHA256": digest(original)}
@@ -228,6 +228,15 @@ def split(version, input_dir, output_dir, expected_source_manifest_sha256):
                       "rebuild": {"root": 'rebuild', "target": 'targets/' + target.replace('/', '-'),
                                   "mapping": 'manifest.json#targets/' + target}}
             licenses = {**licenses, 'licenses/SOURCE-MATERIALS.json': encoded(notice)}
+            licenses = {**licenses, 'licenses/NOTICE.txt': (
+                'This distribution contains libmpv and its linked third-party libraries.\n'
+                'Applicable copyright and license texts accompany these files.\n'
+                'libmpv remains independently replaceable under the applicable LGPL terms.\n'
+                'Portions of this software are copyright © 2025 The FreeType Project\n'
+                '(https://freetype.org). All rights reserved.\n'
+                'Corresponding sources, patches and rebuild instructions for this version:\n'
+                + pointer['url'] + '\nSee SOURCE-MATERIALS.json for fixed hashes and source provenance.\n'
+            ).encode('utf-8')}
             files = {**binaries, **licenses}
             runtime_manifest = {k: original[k] for k in ('schemaVersion', *FIELDS, 'target', 'dependencies')}
             runtime_manifest.update(files=inventory(files), details={"packageKind": "runtime", "materials": pointer,

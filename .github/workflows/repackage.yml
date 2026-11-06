@@ -1,0 +1,68 @@
+name: Repackage verified libmpv bundles
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_version:
+        description: "已验证的完整产物版本（schema 1）"
+        required: true
+        default: "v0.42.0-1"
+      source_manifest_sha256:
+        description: "来源发布清单的可信 SHA256"
+        required: true
+        default: "ce0842745e6cd77af959f6cc5127d1cb09f5439a84b1520276b8af322954b346"
+      version:
+        description: "新运行包版本"
+        required: true
+        default: "v0.42.0-2"
+      create_release:
+        description: "创建包含运行包与共享材料包的草稿"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repackage-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  repackage:
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_VERSION: ${{ inputs.source_version }}
+      SOURCE_MANIFEST_SHA256: ${{ inputs.source_manifest_sha256 }}
+      BUNDLE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: python -m pip install -r requirements-test.txt
+      - run: python -m unittest discover -s tests -v
+      - name: Download fixed full source bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$SOURCE_VERSION" --repo "$GITHUB_REPOSITORY" \
+            --dir build/repackage-input --pattern '*.tar.gz' \
+            --pattern manifest.json --pattern SHA256SUMS
+      - name: Verify inputs and split runtime from materials
+        run: |
+          python scripts/split_release.py --version "$BUNDLE_VERSION" \
+            --input-dir build/repackage-input --output-dir dist \
+            --expected-source-manifest-sha256 "$SOURCE_MANIFEST_SHA256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: split-bundles
+          path: dist/
+          if-no-files-found: error
+      - name: Create draft release
+        if: inputs.create_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$BUNDLE_VERSION" --repo "$GITHUB_REPOSITORY" \
+            dist/*.tar.gz dist/manifest.json dist/SHA256SUMS \
+            --target "$GITHUB_SHA" --draft --title "$BUNDLE_VERSION" --notes-file README.md
