@@ -396,14 +396,21 @@ class WindowsRuntimeTests(unittest.TestCase):
                     self._recapture()
                 self.repro_members.pop()
 
-    def test_capture_requires_response_and_version(self):
-        for index in (0, 1):
-            with self.subTest(index=index):
-                member = self.repro_members.pop(index)
-                self._write_repro()
-                with self.assertRaisesRegex(ValueError, 'Missing reproducer'):
-                    self._recapture()
-                self.repro_members.insert(index, member)
+    def test_capture_requires_response(self):
+        self.repro_members.pop(0)
+        self._write_repro()
+        with self.assertRaisesRegex(ValueError, 'Missing reproducer'):
+            self._recapture()
+
+    def test_capture_accepts_native_coff_without_version_file(self):
+        # CI 42177442531: LLD COFF writes response.txt without version.txt.
+        self.repro_members.pop(1)
+        self._write_repro()
+        self._recapture()
+        manifest = w._load(self.manifest_file)
+        self.assertIsNone(manifest['versionText'])
+        self.assertEqual(len(manifest['inputs']), 6)
+        self.complete()
 
     def test_review_rejects_tar_path_escape_with_rebound_manifest(self):
         def mutate(value):

@@ -159,8 +159,9 @@ def capture_link_evidence(map_file, prefix, native_prefix, output):
                 _package_check(owner, version, policy, arches[0])
                 record.update(owner=owner, version=version)
             records.append(record)
-    if set(metadata) != {'response.txt', 'version.txt'} or not all(metadata.values()) or not records:
-        raise ValueError('Missing reproducer inputs/response/version')
+    # COFF/MinGW reproductions contain response.txt but may omit version.txt.
+    if not metadata.get('response.txt') or not all(metadata.values()) or not records:
+        raise ValueError('Missing reproducer inputs/response')
     crt_owners = {entry['packagePrefix'] + 'crt' for entry in policy['architectures'].values()}
     if not any(r['owner'] in crt_owners and Path(r['path']).suffix.lower() in ('.o', '.obj', '.a', '.lib') for r in records):
         raise ValueError('Missing CRT startup/import-library evidence')
@@ -172,7 +173,7 @@ def capture_link_evidence(map_file, prefix, native_prefix, output):
     shutil.copy2(map_file, config / 'mpv-link.map')
     manifest = {'schemaVersion': 2, 'mapSHA256': map_sha, 'reproducerSHA256': repro_sha,
                 'inputScope': INPUT_SCOPE, 'responseText': metadata['response.txt'],
-                'versionText': metadata['version.txt'], 'inputs': records}
+                'versionText': metadata.get('version.txt'), 'inputs': records}
     manifest_file = config / 'windows-link-reproducer.json'
     p.atomic_json(manifest_file, manifest)
     evidence = {'schemaVersion': 2, 'mapSHA256': map_sha, 'reproducerSHA256': repro_sha,
@@ -193,9 +194,10 @@ def _review_link(output, arch, policy, packages):
     if p.digest(manifest_file) != evidence['manifestSHA256']:
         raise ValueError('Changed reproducer manifest')
     manifest = _load(manifest_file)
+    version = manifest.get('versionText')
     if (manifest.get('schemaVersion') != 2 or manifest.get('mapSHA256') != evidence['mapSHA256']
             or not _hash(evidence.get('reproducerSHA256')) or manifest.get('reproducerSHA256') != evidence['reproducerSHA256']
-            or manifest.get('inputScope') != INPUT_SCOPE or not manifest.get('responseText') or not manifest.get('versionText')):
+            or manifest.get('inputScope') != INPUT_SCOPE or not manifest.get('responseText') or (version is not None and (not isinstance(version, str) or not version))):
         raise ValueError('Invalid reproducer manifest')
     records = manifest.get('inputs', [])
     if not records:
