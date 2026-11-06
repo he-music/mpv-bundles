@@ -16,6 +16,9 @@ import prepare as p
 from pe import imports, is_system_dll
 
 POLICY = Path(__file__).with_name('windows-runtimes.lock.json')
+INPUT_SCOPE = ('Linker actually read inputs; archives may include unselected members. '
+               'The complete map is retained for comparison, not source attribution. '
+               'Only the reproducer input inventory establishes input provenance.')
 
 
 def _load(path):
@@ -35,10 +38,10 @@ def _within(path, root):
 
 
 def _map_inputs(text):
-    """Read input columns of LLD's GNU and COFF /map table formats.
+    """Display input columns of synthetic GNU/COFF maps; never establish identity.
 
-    GNU rows have Address Size Align Out In Symbol columns; COFF symbol rows
-    end in Lib:Object. Ignore symbols and output sections, not unknown files.
+    Real COFF maps can contain anonymous archive-member names, which are not
+    disk paths and cannot establish archive ownership.
     """
     found = set()
     for line in text.splitlines():
@@ -47,7 +50,6 @@ def _map_inputs(text):
         column = gnu.group(1) if gnu else coff.group(1) if coff else None
         if not column:
             continue
-        # Archive members are represented either as a(member) or a:member.
         archive = re.fullmatch(r'(.+?\.(?:a|lib))(?:\([^\r\n]+\)|:[^\r\n]+)(?::\([^\r\n]*\))?', column, re.I)
         obj = re.fullmatch(r'(.+?\.(?:o|obj))(?::\([^\r\n]*\))?', column, re.I)
         if archive:
@@ -85,58 +87,135 @@ def _package_check(owner, version, policy, arch):
         raise ValueError(f'Unknown link owner or package version: {owner} {version}')
 
 
+def _member_parts(name):
+    # Do not normalize unsafe spellings: LLD relativeToRoot already normalizes.
+    parts = name.split('/')
+    if len(parts) < 2 or any(not part or part in ('.', '..') for part in parts) or '\\' in name or ':' in name or '\0' in name:
+        raise ValueError(f'Unsafe reproducer member: {name}')
+    return parts
+
+
+def _original_spelling(member):
+    parts = _member_parts(member)[1:]
+    if len(parts) < 2:
+        raise ValueError(f'Missing absolute reproducer input path: {member}')
+    if re.fullmatch('[A-Za-z]', parts[0]):
+        return parts[0] + ':/' + '/'.join(parts[1:])
+    return '/' + '/'.join(parts)
+
+
+def _input_path(member):
+    path = Path(_original_spelling(member))
+    if not path.is_absolute() or path != path.resolve():
+        raise ValueError(f'Invalid original reproducer path: {member}')
+    return path
+
+
+def _stream_sha(stream):
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 def capture_link_evidence(map_file, prefix, native_prefix, output):
-    """Capture immediately after final linking, while actual inputs still exist."""
+    """Capture LLD --reproduce inputs without extracting or distributing the tar."""
     policy = _load(POLICY)
     prefix, native_prefix, output = Path(prefix).resolve(), Path(native_prefix).resolve(), Path(output)
     work = prefix.parent / 'work'
-    project_root = work / 'mpv-build'
     map_file = Path(map_file)
-    text = map_file.read_text(encoding='utf-8')
-    records = []
-    for spelling in _map_inputs(text):
-        path = _native_path(spelling, project_root)
-        record = {'mapPath': spelling, 'path': str(path), 'sha256': p.digest(path)}
-        if _within(path, prefix) or (_within(path, work) and path.suffix.lower() in ('.o', '.obj')):
-            root = prefix if _within(path, prefix) else work
-            record.update(owner='project-fixed-source', projectRoot=str(root), relativePath=path.relative_to(root).as_posix())
-        else:
-            if not _within(path, native_prefix):
-                raise ValueError(f'Link input outside fixed project/toolchain roots: {path}')
-            owner, version = _owner(path)
-            arches = [a for a, entry in policy['architectures'].items() if owner.startswith(entry['packagePrefix'])]
-            if len(arches) != 1:
-                raise ValueError(f'Unknown link owner: {owner}')
-            _package_check(owner, version, policy, arches[0])
-            record.update(owner=owner, version=version)
-        records.append(record)
+    repro = map_file.with_suffix('.repro.tar')
+    map_sha, repro_sha = p.digest(map_file), p.digest(repro)
+    records, metadata, seen = [], {}, set()
+    top = None
+    with tarfile.open(repro, 'r:') as container:
+        for member in container:
+            parts = _member_parts(member.name)
+            if not member.isfile() or member.name in seen or (top is not None and top != parts[0]):
+                raise ValueError(f'Invalid reproducer member: {member.name}')
+            top = parts[0]
+            seen.add(member.name)
+            with container.extractfile(member) as stream:
+                if len(parts) == 2 and parts[1] in ('response.txt', 'version.txt'):
+                    if member.size > 16 * 1024 * 1024:
+                        raise ValueError('Oversized reproducer metadata')
+                    metadata[parts[1]] = stream.read().decode('utf-8')
+                    continue
+                path = _input_path(member.name)
+                record = {'tarMember': member.name, 'size': member.size,
+                          'path': str(path), 'sha256': _stream_sha(stream)}
+            if not path.is_file() or path.stat().st_size != member.size or p.digest(path) != record['sha256']:
+                raise ValueError(f'Reproducer/original input bytes differ: {path}')
+            if _within(path, prefix) or (_within(path, work) and path.suffix.lower() in ('.o', '.obj')):
+                root = prefix if _within(path, prefix) else work
+                record.update(owner='project-fixed-source', projectRoot=str(root), relativePath=path.relative_to(root).as_posix())
+            else:
+                if not _within(path, native_prefix):
+                    raise ValueError(f'Link input outside fixed project/toolchain roots: {path}')
+                owner, version = _owner(path)
+                arches = [a for a, entry in policy['architectures'].items() if owner.startswith(entry['packagePrefix'])]
+                if len(arches) != 1:
+                    raise ValueError(f'Unknown link owner: {owner}')
+                _package_check(owner, version, policy, arches[0])
+                record.update(owner=owner, version=version)
+            records.append(record)
+    if set(metadata) != {'response.txt', 'version.txt'} or not all(metadata.values()) or not records:
+        raise ValueError('Missing reproducer inputs/response/version')
+    crt_owners = {entry['packagePrefix'] + 'crt' for entry in policy['architectures'].values()}
+    if not any(r['owner'] in crt_owners and Path(r['path']).suffix.lower() in ('.o', '.obj', '.a', '.lib') for r in records):
+        raise ValueError('Missing CRT startup/import-library evidence')
+    # Detect changes to the evidence during capture before saving any inventory.
+    if p.digest(map_file) != map_sha or p.digest(repro) != repro_sha:
+        raise ValueError('Changed map/reproducer during capture')
     config = output / 'build-config'
     config.mkdir(parents=True, exist_ok=True)
     shutil.copy2(map_file, config / 'mpv-link.map')
-    evidence = {'schemaVersion': 1, 'mapSHA256': p.digest(config / 'mpv-link.map'),
-                'prefix': str(prefix), 'work': str(work), 'nativePrefix': str(native_prefix), 'inputs': records}
+    manifest = {'schemaVersion': 2, 'mapSHA256': map_sha, 'reproducerSHA256': repro_sha,
+                'inputScope': INPUT_SCOPE, 'responseText': metadata['response.txt'],
+                'versionText': metadata['version.txt'], 'inputs': records}
+    manifest_file = config / 'windows-link-reproducer.json'
+    p.atomic_json(manifest_file, manifest)
+    evidence = {'schemaVersion': 2, 'mapSHA256': map_sha, 'reproducerSHA256': repro_sha,
+                'manifestFile': manifest_file.name, 'manifestSHA256': p.digest(manifest_file),
+                'prefix': str(prefix), 'work': str(work), 'nativePrefix': str(native_prefix)}
     p.atomic_json(config / 'windows-link-inputs.json', evidence)
-    return evidence
+    return {**evidence, 'inputs': records}
 
 
 def _review_link(output, arch, policy, packages):
     config = output / 'build-config'
     evidence = _load(config / 'windows-link-inputs.json')
-    if evidence.get('schemaVersion') != 1 or p.digest(config / 'mpv-link.map') != evidence.get('mapSHA256'):
-        raise ValueError('Missing or changed final link map')
-    spellings = _map_inputs((config / 'mpv-link.map').read_text(encoding='utf-8'))
-    records = evidence.get('inputs', [])
-    if len(records) != len(spellings) or sorted(r.get('mapPath', '') for r in records) != spellings:
-        raise ValueError('Link map/input inventory mismatch')
+    if evidence.get('schemaVersion') != 2 or p.digest(config / 'mpv-link.map') != evidence.get('mapSHA256'):
+        raise ValueError('Missing or changed final link map/reproducer evidence')
+    if evidence.get('manifestFile') != 'windows-link-reproducer.json' or not _hash(evidence.get('manifestSHA256')):
+        raise ValueError('Missing reproducer manifest binding')
+    manifest_file = config / evidence['manifestFile']
+    if p.digest(manifest_file) != evidence['manifestSHA256']:
+        raise ValueError('Changed reproducer manifest')
+    manifest = _load(manifest_file)
+    if (manifest.get('schemaVersion') != 2 or manifest.get('mapSHA256') != evidence['mapSHA256']
+            or not _hash(evidence.get('reproducerSHA256')) or manifest.get('reproducerSHA256') != evidence['reproducerSHA256']
+            or manifest.get('inputScope') != INPUT_SCOPE or not manifest.get('responseText') or not manifest.get('versionText')):
+        raise ValueError('Invalid reproducer manifest')
+    records = manifest.get('inputs', [])
+    if not records:
+        raise ValueError('Missing reproducer input inventory')
     prefix, work, native = (Path(evidence[k]) for k in ('prefix', 'work', 'nativePrefix'))
-    if work != prefix.parent / 'work':
-        raise ValueError('Invalid project work root')
-    owners = set()
+    if any(not root.is_absolute() or root != root.resolve() for root in (prefix, work, native)) or work != prefix.parent / 'work':
+        raise ValueError('Invalid project/toolchain root')
+    owners, members = set(), set()
+    top = None
     for record in records:
-        if not _hash(record.get('sha256')):
-            raise ValueError('Missing link input SHA256')
+        if not _hash(record.get('sha256')) or type(record.get('size')) is not int or record['size'] < 0:
+            raise ValueError('Missing link input SHA256/size')
+        member = record['tarMember']
+        parts = _member_parts(member)
+        if member in members or (top is not None and top != parts[0]):
+            raise ValueError('Duplicate/inconsistent reproducer member')
+        top = parts[0]
+        members.add(member)
         path = Path(record['path'])
-        if not path.is_absolute() or path != _native_path(record['mapPath'], work / 'mpv-build'):
+        if path != _input_path(member):
             raise ValueError('Invalid link input path')
         owner = record['owner']
         if owner == 'project-fixed-source':
@@ -149,18 +228,19 @@ def _review_link(output, arch, policy, packages):
             _package_check(owner, record.get('version'), policy, arch)
             if packages.get(owner) != record['version'] or not _within(path, native):
                 raise ValueError('Link owner not in captured toolchain')
-            owners.add(owner)
+            if path.suffix.lower() in ('.o', '.obj', '.a', '.lib'):
+                owners.add(owner)
         # Archived evidence remains usable after the native build directory is gone.
         # Recheck any surviving original inputs; on Windows also recheck ownership.
         if path.exists():
-            if p.digest(path) != record['sha256']:
+            if not path.is_file() or path.stat().st_size != record['size'] or p.digest(path) != record['sha256']:
                 raise ValueError(f'Changed link input: {path}')
             if os.name == 'nt' and owner != 'project-fixed-source' and _owner(path) != (owner, record['version']):
                 raise ValueError('Changed native link owner')
     crt = policy['architectures'][arch]['packagePrefix'] + 'crt'
     if crt not in owners:
         raise ValueError('Missing CRT startup/import-library evidence')
-    return evidence
+    return {**evidence, 'inputs': records}
 
 
 def _review_pe(output, arch, policy):
@@ -266,10 +346,13 @@ def complete_materials(output, target, cache, offline=False):
     scripts.mkdir(parents=True, exist_ok=True)
     for source in (POLICY, Path(__file__)):
         shutil.copy2(source, scripts / source.name)
-    report = {'schemaVersion': 1, 'target': target,
+    report = {'schemaVersion': 2, 'target': target,
               'correspondingSourceStatus': policy['correspondingSourceStatus'],
               'policySHA256': p.digest(POLICY), 'scope': policy['scope'],
               'imports': dependencies, 'linkMapSHA256': evidence['mapSHA256'],
+              'linkReproducerSHA256': evidence['reproducerSHA256'],
+              'linkManifestFile': evidence['manifestFile'], 'linkManifestSHA256': evidence['manifestSHA256'],
+              'linkInputScope': INPUT_SCOPE,
               'linkInputCount': len(evidence['inputs']), 'sources': policy['sources'],
               'rebuildInstructions': policy['rebuildInstructions']}
     p.atomic_json(output / 'windows-runtime-review.json', report)
