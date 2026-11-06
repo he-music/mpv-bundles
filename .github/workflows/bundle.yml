@@ -22,7 +22,10 @@ jobs:
       - name: Prepare Linux bundle in locked container
         if: startsWith(matrix.target, 'linux/')
         shell: bash
-        env: {BUNDLE_GITHUB_SHA: ${{ github.sha }}, BUNDLE_GITHUB_REPOSITORY: ${{ github.repository }}, BUNDLE_GITHUB_RUN_ID: ${{ github.run_id }}}
+        env:
+          BUNDLE_GITHUB_SHA: "${{ github.sha }}"
+          BUNDLE_GITHUB_REPOSITORY: "${{ github.repository }}"
+          BUNDLE_GITHUB_RUN_ID: "${{ github.run_id }}"
         run: docker run --rm -e GITHUB_SHA="$BUNDLE_GITHUB_SHA" -e GITHUB_REPOSITORY="$BUNDLE_GITHUB_REPOSITORY" -e GITHUB_RUN_ID="$BUNDLE_GITHUB_RUN_ID" -v "$PWD:/work" -w /work ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11 bash -lc 'apt-get update && apt-get install -y ca-certificates build-essential binutils libpulse-dev python3-venv xz-utils && python3 -m venv build/tools && build/tools/bin/pip install -r requirements-build.txt && build/tools/bin/python scripts/mpv/prepare.py --target ${{ matrix.target }}'
       - name: Install MSYS2 toolchain and native Python
         if: startsWith(matrix.target, 'windows/')
@@ -40,14 +43,20 @@ jobs:
       - name: Prepare Windows bundle
         if: startsWith(matrix.target, 'windows/')
         shell: msys2 {0}
-        env: {GITHUB_SHA: ${{ github.sha }}, GITHUB_REPOSITORY: ${{ github.repository }}, GITHUB_RUN_ID: ${{ github.run_id }}}
+        env:
+          GITHUB_SHA: "${{ github.sha }}"
+          GITHUB_REPOSITORY: "${{ github.repository }}"
+          GITHUB_RUN_ID: "${{ github.run_id }}"
         run: python scripts/mpv/prepare.py --target ${{ matrix.target }}
       - name: Install macOS build requirements
         if: matrix.target == 'darwin/universal'
         run: python3 -m pip install -r requirements-build.txt
       - name: Prepare macOS bundle
         if: matrix.target == 'darwin/universal'
-        env: {GITHUB_SHA: ${{ github.sha }}, GITHUB_REPOSITORY: ${{ github.repository }}, GITHUB_RUN_ID: ${{ github.run_id }}}
+        env:
+          GITHUB_SHA: "${{ github.sha }}"
+          GITHUB_REPOSITORY: "${{ github.repository }}"
+          GITHUB_RUN_ID: "${{ github.run_id }}"
         run: python3 scripts/mpv/prepare.py --target darwin/universal
       - name: Run tests and syntax checks
         run: python3 -m unittest discover -s tests -v && python3 -m py_compile scripts/mpv/*.py
@@ -55,7 +64,10 @@ jobs:
         shell: bash
         run: tar -czf "libmpv-${{ matrix.asset_name }}.tar.gz" -C "build/mpv-cache/prepared/${{ matrix.asset_name }}" mpv
       - uses: actions/upload-artifact@v4
-        with: {name: libmpv-${{ matrix.asset_name }}, path: libmpv-${{ matrix.asset_name }}.tar.gz, if-no-files-found: error}
+        with:
+          name: libmpv-${{ matrix.asset_name }}
+          path: libmpv-${{ matrix.asset_name }}.tar.gz
+          if-no-files-found: error
   release-draft:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -75,5 +87,6 @@ jobs:
           sha256sum "$final" >> SHA256SUMS
           sha256sum SHA256SUMS > SHA256SUMS.sha256
       - name: Create draft release
-        env: {GH_TOKEN: ${{ github.token }}}
+        env:
+          GH_TOKEN: "${{ github.token }}"
         run: gh release create "$GITHUB_REF_NAME" --repo "${{ github.repository }}" "libmpv-bundles-${GITHUB_REF_NAME}.tar.gz" SHA256SUMS SHA256SUMS.sha256 --draft --title "$GITHUB_REF_NAME" --notes-file README.md
